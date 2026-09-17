@@ -1,0 +1,57 @@
+# JerseyMikes — bot + console.
+#   docker compose --env-file ../.env up -d --build
+# Both control surfaces publish on host loopback only. Reach them through an
+# SSH tunnel or an authenticated TLS reverse proxy.
+services:
+  bot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.bot
+    env_file: ../.env
+    environment:
+      API_BIND: "0.0.0.0:8080"
+      API_AUTH_TOKEN: "${API_AUTH_TOKEN:?set API_AUTH_TOKEN in .env - generate with openssl rand -hex 32}"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - bot-data:/data
+  console:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.console
+    environment:
+      BOT_API_URL: http://bot:8080
+      BOT_API_TOKEN: "${API_AUTH_TOKEN:?set API_AUTH_TOKEN in .env - generate with openssl rand -hex 32}"
+      ETH_PROXY_URL: ${ETH_HTTP_URL:-}
+      ENABLE_DEMO_MUTATIONS: "false"
+      # Multi-chain: uncomment + add a second bot service (see
+      # docs/DEPLOYMENT.md "Multi-chain layout") to show Base in the console.
+      # CHAINS: "ethereum|http://bot:8080,base|http://bot-base:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      bot:
+        condition: service_healthy
+volumes:
+  bot-data:

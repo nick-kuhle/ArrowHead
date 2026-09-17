@@ -1,0 +1,192 @@
+#!/usr/bin/env node
+/**
+ * Compile-check every Solidity file with solc-js.
+ *
+ * `forge build` is the canonical build (see CI), but this script lets the whole
+ * contract suite be type-checked in environments where the Foundry binaries are
+ * not available. Run with: `node contracts/script/compile-check.js`
+ */
+const fs = require("fs");
+const path = require("path");
+const solc = require("solc");
+
+const ROOT = path.resolve(__dirname, "..");
+const REMAPPINGS = [["forge-std/", "lib/forge-std/src/"]];
+
+function walk(dir, out = []) {
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, {withFileTypes: true})) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) walk(p, out);
+    else if (e.name.endsWith(".sol")) out.push(p);
+  }
+  return out;
+}
+
+function resolve(importPath, fromFile) {
+  for (const [prefix, target] of REMAPPINGS) {
+    if (importPath.startsWith(prefix)) {
+      return path.join(ROOT, target + importPath.slice(prefix.length));
+    }
+  }
+  if (importPath.startsWith(".")) return path.resolve(path.dirname(fromFile), importPath);
+  return path.join(ROOT, importPath);
+}
+
+const sources = {};
+const seen = new Set();
+function add(file) {
+  const abs = path.resolve(file);
+  if (seen.has(abs)) return;
+  seen.add(abs);
+  const content = fs.readFileSync(abs, "utf8");
+  sources[abs] = {content};
+  for (const m of content.matchAll(/import\s+(?:\{[^}]*\}\s+from\s+)?["']([^"']+)["']/g)) {
+    const dep = resolve(m[1], abs);
+    if (fs.existsSync(dep)) add(dep);
+    else throw new Error(`unresolved import ${m[1]} in ${abs}`);
+  }
+}
+
+const entry = [...walk(path.join(ROOT, "src")), ...walk(path.join(ROOT, "test")), ...walk(path.join(ROOT, "script"))]
+  .filter((f) => !f.includes("/lib/") && !f.endsWith("compile-check.js"));
+entry.forEach(add);
+
+const input = {
+  language: "Solidity",
+  sources,
+  settings: {
+    optimizer: {enabled: true, runs: 1000000},
+    evmVersion: "cancun",
+    // Match foundry.toml's `bytecode_hash = "none"` and keep the emitted
+    // artifacts reproducible from any checkout. solc's default is to embed an
+    // IPFS metadata hash whose inputs include the *absolute path* of every
+    // source file; the `compile-check.js` artifact-drift CI job would then
+    // fail (or pass) depending on which directory the repo happened to be
+    // checked out into. `useLiteralContent` keeps the creation-bytecode
+    // metadata deterministic too.
+    metadata: {bytecodeHash: "none", useLiteralContent: true},
+    outputSelection: {
+      "*": {
+        "": ["ast"],
+        "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.immutableReferences",
+        ],
+      },
+    },
+  },
+};
+
+const findImports = (p) => {
+  const candidates = [resolve(p, ROOT), path.join(ROOT, p), p];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isFile()) return {contents: fs.readFileSync(c, "utf8")};
+  }
+  return {error: `not found: ${p}`};
+};
+
+const out = JSON.parse(solc.compile(JSON.stringify(input), {import: findImports}));
+const errors = (out.errors || []).filter((e) => e.severity === "error");
+const warnings = (out.errors || []).filter((e) => e.severity !== "error");
+
+for (const w of warnings) console.warn(w.formattedMessage);
+if (errors.length) {
+  for (const e of errors) console.error(e.formattedMessage);
+  process.exit(1);
+}
+
+// Resolve Solidity's AST ids in `immutableReferences` back to source names so
+// the Rust simulator can patch a runtime-only fixture without hard-coding byte
+// offsets that change on every contract edit.
+const immutableNames = new Map();
+function indexImmutableNames(node) {
+  if (!node || typeof node !== "object") return;
+  if (node.nodeType === "VariableDeclaration" && node.mutability === "immutable") {
+    immutableNames.set(String(node.id), node.name);
+  }
+  for (const value of Object.values(node)) {
+    if (Array.isArray(value)) value.forEach(indexImmutableNames);
+    else if (value && typeof value === "object") indexImmutableNames(value);
+  }
+}
+for (const source of Object.values(out.sources || {})) indexImmutableNames(source.ast);
+
+// Emit ABIs consumed by the frontend so the dashboard can talk to the contracts.
+const abiDir = path.join(ROOT, "abi");
+fs.mkdirSync(abiDir, {recursive: true});
+let count = 0;
+const MOCK_ARTIFACTS = new Set(["MockERC20", "SimV2Pair", "MockWETH"]);
+for (const [file, contracts] of Object.entries(out.contracts || {})) {
+  const isSrc = file.startsWith(path.join(ROOT, "src") + path.sep);
+  const isFixtureMock =
+    file.startsWith(path.join(ROOT, "test", "mocks") + path.sep) &&
+    Object.keys(contracts).some((name) => MOCK_ARTIFACTS.has(name));
+  if (!isSrc && !isFixtureMock) continue;
+  for (const [name, c] of Object.entries(contracts)) {
+    const abiJson = JSON.stringify(c.abi, null, 2) + "\n";
+    if (isSrc) fs.writeFileSync(path.join(abiDir, `${name}.json`), abiJson);
+    // The console deploys and verifies both production contracts in-browser.
+    // Keep its checked-in ABI/creation artifacts generated from the same
+    // solc-js compilation used by the artifact-drift check.
+    if (name === "MevExecutor" || name === "SniperVault" || name === "JerseyMikesFeeRouter") {
+      const frontendDir = path.resolve(ROOT, "..", "frontend", "lib");
+      fs.mkdirSync(frontendDir, {recursive: true});
+      fs.writeFileSync(path.join(frontendDir, `${name}.abi.json`), abiJson);
+      fs.writeFileSync(path.join(frontendDir, `${name}.creation.hex`), "0x" + c.evm.bytecode.object);
+    }
+    const size = (c.evm.deployedBytecode.object.length / 2) | 0;
+    if (name === "MevExecutor") {
+      // The Rust simulator embeds this with include_str! and injects it into the
+      // anvil fork via anvil_setCode, so it can simulate before any deployment.
+      const artifactDir = path.resolve(ROOT, "..", "bot", "crates", "mev-bot", "artifacts");
+      fs.mkdirSync(artifactDir, {recursive: true});
+      fs.writeFileSync(path.join(artifactDir, "MevExecutor.runtime.hex"), "0x" + c.evm.deployedBytecode.object);
+      fs.writeFileSync(path.join(artifactDir, "MevExecutor.creation.hex"), "0x" + c.evm.bytecode.object);
+      fs.writeFileSync(path.join(artifactDir, "MevExecutor.abi.json"), JSON.stringify(c.abi, null, 2) + "\n");
+      const refs = {};
+      for (const [id, positions] of Object.entries(c.evm.deployedBytecode.immutableReferences || {})) {
+        const name = immutableNames.get(String(id));
+        if (!name) throw new Error(`unknown immutable AST id ${id}`);
+        refs[name] = positions;
+      }
+      fs.writeFileSync(
+        path.join(artifactDir, "MevExecutor.immutables.json"),
+        JSON.stringify(refs, null, 2) + "\n",
+      );
+    }
+    if (name === "SniperVault") {
+      // The sniper's *simulation* fixture deploys this exact bytecode into the
+      // local anvil fork (constructor and all), so simulation exercises the
+      // real contract guards rather than a paper stand-in. The artifact-drift
+      // gate keeps it byte-identical to what a production deployment uses.
+      const artifactDir = path.resolve(ROOT, "..", "bot", "crates", "mev-bot", "artifacts");
+      fs.mkdirSync(artifactDir, {recursive: true});
+      fs.writeFileSync(path.join(artifactDir, "SniperVault.runtime.hex"), "0x" + c.evm.deployedBytecode.object);
+      fs.writeFileSync(path.join(artifactDir, "SniperVault.creation.hex"), "0x" + c.evm.bytecode.object);
+      fs.writeFileSync(path.join(artifactDir, "SniperVault.abi.json"), JSON.stringify(c.abi, null, 2) + "\n");
+      const refs = {};
+      for (const [id, positions] of Object.entries(c.evm.deployedBytecode.immutableReferences || {})) {
+        const refName = immutableNames.get(String(id));
+        if (!refName) throw new Error(`unknown immutable AST id ${id}`);
+        refs[refName] = positions;
+      }
+      fs.writeFileSync(
+        path.join(artifactDir, "SniperVault.immutables.json"),
+        JSON.stringify(refs, null, 2) + "\n",
+      );
+    }
+    if (name === "MockERC20" || name === "SimV2Pair" || name === "MockWETH") {
+      // Deterministic mock liquidity for the sniper simulation fixture:
+      // deployed into the same local fork, never to a production chain.
+      const artifactDir = path.resolve(ROOT, "..", "bot", "crates", "mev-bot", "artifacts");
+      fs.mkdirSync(artifactDir, {recursive: true});
+      fs.writeFileSync(path.join(artifactDir, `${name}.creation.hex`), "0x" + c.evm.bytecode.object);
+    }
+    console.log(`ok  ${name.padEnd(24)} runtime ${String(size).padStart(6)} bytes`);
+    if (isSrc) count++;
+  }
+}
+console.log(`\ncompiled ${Object.keys(sources).length} sources, ${count} deployable contracts, ${warnings.length} warnings`);

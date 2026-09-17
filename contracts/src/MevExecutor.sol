@@ -1,0 +1,512 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.26;
+
+import {IERC20, IWETH, IBalancerVault, IFlashLoanRecipient} from "./interfaces/IExternal.sol";
+
+/// @title MevExecutor
+/// @notice Generic atomic MEV execution contract.
+///
+/// Design goals
+/// ------------
+/// 1. **Retained-profit guard.** Settling entry points measure the balance of `profitToken`
+///    (address(0) == native ETH), pay any builder share, and revert unless the retained
+///    delta is >= `minProfit`. Private bundle simulation should exclude a reverting batch;
+///    partial inclusion is still treated as an operational incident by the off-chain bot.
+/// 2. **Generic.** Strategies (sandwich, JIT, atomic arb, liquidation, sniper) are encoded
+///    off-chain as an ordered array of `Call`s. No strategy-specific on-chain logic means
+///    no redeploy when a strategy changes.
+/// 3. **Cheap.** Tight calldata, transient-storage guards (EIP-1153), no SafeERC20 bloat.
+/// 4. **Safe by default.** Only whitelisted searchers can execute; funds can only ever be
+///    swept by the owner.
+contract MevExecutor is IFlashLoanRecipient {
+    struct Call {
+        address target;
+        uint256 value;
+        bytes data;
+    }
+
+    /// @param profitToken Token the profit is denominated in. address(0) == native ETH.
+    /// @param minProfit   Minimum realised delta required, otherwise the tx reverts.
+    /// @param bribeBps    Share of realised profit (in bps) paid to `block.coinbase`.
+    /// @param blockDeadline Last block this batch may execute in (0 = no deadline).
+    /// @param maxBaseFee  Reverts if `block.basefee` exceeds this (0 = no cap).
+    /// @notice Settlement policy for one executor leg.
+    /// @dev `phase` makes two-transaction strategies (front → victim → back)
+    ///      economically atomic at the contract boundary:
+    ///
+    ///      * 0 — single transaction; measure from this call's entry balance.
+    ///      * 1 — opening leg; persist the pre-strategy balance under `tag`.
+    ///      * 2 — closing leg; settle against the balance persisted by phase 1.
+    ///
+    ///      A closing leg must execute in the same block as its opener. Private
+    ///      bundle relays already reject a bundle containing an unexpected
+    ///      revert; this stateful baseline additionally prevents a back leg
+    ///      from calling returned principal "profit".
+    struct Guard {
+        address profitToken;
+        uint256 minProfit;
+        uint16 bribeBps;
+        uint64 blockDeadline;
+        uint256 maxBaseFee;
+        uint8 phase;
+    }
+
+    struct Baseline {
+        address profitToken;
+        uint64 blockNumber;
+        uint256 balance;
+    }
+
+    // Transient-storage (EIP-1153) guard slots.
+    //
+    // These are arbitrary fixed constants, not hashes — an earlier comment
+    // described them as `keccak256("jerseymikes.…")`, which they are not
+    // (verified: keccak256("jerseymikes.reentrancy.guard") is
+    // 0x0217913e…3090, not the value below). The values are left byte-for-byte
+    // unchanged because they are already correct for their purpose and
+    // changing them would alter the runtime bytecode for no benefit; only the
+    // claim about their derivation is fixed.
+    //
+    // Uniqueness is what actually matters here, and it holds: transient
+    // storage is private to this contract, all three constants are distinct,
+    // and each is far outside the low slot range the compiler would ever
+    // assign on its own.
+    bytes32 private constant _REENTRANCY_SLOT =
+        0x9d0c4a1f5e1a2b6f5f8c0e5f3f5c0a6b1b5b2a7c8d9e0f1a2b3c4d5e6f708192;
+    bytes32 private constant _FLASHLOAN_SLOT =
+        0x1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809;
+    bytes32 private constant _V3_CALLBACK_SLOT =
+        0x2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a;
+
+    address public immutable BALANCER_VAULT;
+    address public immutable WETH;
+
+    address public owner;
+    mapping(address => bool) public searchers;
+    mapping(bytes32 => Baseline) private _baselines;
+
+    event PhaseOpened(bytes32 indexed tag, address indexed profitToken, uint256 referenceBalance);
+    event ExpiredBaselineCleared(bytes32 indexed tag, uint64 openedAtBlock);
+    event Executed(
+        bytes32 indexed tag,
+        address indexed profitToken,
+        uint256 grossProfit,
+        uint256 bribe,
+        uint256 retainedProfit,
+        uint256 gasUsed
+    );
+    event SearcherSet(address indexed searcher, bool allowed);
+    event OwnerChanged(address indexed previousOwner, address indexed newOwner);
+    event Swept(address indexed token, address indexed to, uint256 amount);
+
+    error NotOwner();
+    error NotSearcher();
+    error Reentrancy();
+    error Deadline();
+    error BaseFeeTooHigh();
+    error Unprofitable(uint256 realised, uint256 required);
+    error CallFailed(uint256 index, bytes returndata);
+    error BadFlashCallback();
+    error BadBribe();
+    error BadPhase();
+    error BaselineExists();
+    error BaselineMissing();
+    error BaselineMismatch();
+    error BaselineNotExpired();
+    /// @notice `sweep` could not deliver native ETH to `to`.
+    error SweepFailed();
+    /// @notice The coinbase transfer of the builder bribe reverted.
+    error BribeFailed();
+    /// @notice An ERC20 `transfer` returned false or reverted.
+    error TransferFailed(address token, address to, uint256 amount);
+    /// @notice `quote` was called with a real sender; use `quoteFrom` instead.
+    error QuoteIsEthCallOnly();
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier onlySearcher() {
+        if (!searchers[msg.sender] && msg.sender != owner) revert NotSearcher();
+        _;
+    }
+
+    modifier nonReentrant() {
+        bytes32 slot = _REENTRANCY_SLOT;
+        assembly ("memory-safe") {
+            if tload(slot) {
+                mstore(0x00, 0xab143c06) // Reentrancy()
+                revert(0x1c, 0x04)
+            }
+            tstore(slot, 1)
+        }
+        _;
+        assembly ("memory-safe") {
+            tstore(slot, 0)
+        }
+    }
+
+    constructor(address balancerVault, address weth) {
+        owner = msg.sender;
+        searchers[msg.sender] = true;
+        BALANCER_VAULT = balancerVault;
+        WETH = weth;
+        emit OwnerChanged(address(0), msg.sender);
+    }
+
+    /// @notice Accepts native ETH.
+    ///
+    /// @dev This MUST stay permissive. It is not a convenience: the WETH-profit
+    ///      bribe path in `_settle` calls `IWETH.withdraw(bribe)`, and WETH9
+    ///      pays out by sending ETH straight back here. A reverting `receive()`
+    ///      would make `withdraw` fail, which reverts the whole batch and
+    ///      silently disables every WETH-denominated bribe. The same applies to
+    ///      any batch leg that unwraps WETH or receives an ETH refund from a
+    ///      router.
+    ///
+    ///      There is deliberately no `fallback()`: calls to unknown selectors
+    ///      revert by default, which is the desired behaviour and costs no
+    ///      bytecode.
+    receive() external payable {}
+
+    // ---------------------------------------------------------------------
+    // Admin
+    // ---------------------------------------------------------------------
+
+    function setSearcher(address searcher, bool allowed) external onlyOwner {
+        searchers[searcher] = allowed;
+        emit SearcherSet(searcher, allowed);
+    }
+
+    function setOwner(address newOwner) external onlyOwner {
+        emit OwnerChanged(owner, newOwner);
+        owner = newOwner;
+    }
+
+    /// @notice Withdraw funds. Only the owner, only to the owner-specified address.
+    function sweep(address token, address to, uint256 amount) external onlyOwner {
+        if (token == address(0)) {
+            (bool ok,) = to.call{value: amount}("");
+            if (!ok) revert SweepFailed();
+        } else {
+            _safeTransfer(token, to, amount);
+        }
+        emit Swept(token, to, amount);
+    }
+
+    /// @notice Delete a phase-1 baseline whose same-block settlement window expired.
+    /// @dev This repairs bookkeeping after an explicitly reported partial inclusion;
+    ///      asset recovery remains an owner decision through `ownerCall` / `sweep`.
+    function clearExpiredBaseline(bytes32 tag) external onlyOwner {
+        Baseline memory baseline = _baselines[tag];
+        if (baseline.blockNumber == 0) revert BaselineMissing();
+        if (baseline.blockNumber >= block.number) revert BaselineNotExpired();
+        delete _baselines[tag];
+        emit ExpiredBaselineCleared(tag, baseline.blockNumber);
+    }
+
+    /// @notice Escape hatch for arbitrary owner-driven maintenance (approvals, unwraps...).
+    function ownerCall(Call[] calldata calls) external payable onlyOwner returns (bytes[] memory) {
+        return _run(calls);
+    }
+
+    // ---------------------------------------------------------------------
+    // Execution
+    // ---------------------------------------------------------------------
+
+    /// @notice Execute an atomic batch, reverting unless it nets at least `g.minProfit`.
+    /// @param tag   Opaque identifier the bot uses to correlate on-chain logs with its DB.
+    /// @param calls Ordered call batch produced by the strategy engine.
+    function execute(bytes32 tag, Call[] calldata calls, Guard calldata g)
+        external
+        payable
+        onlySearcher
+        nonReentrant
+        returns (uint256 profit)
+    {
+        uint256 gasStart = gasleft();
+        _checkGuards(g);
+
+        if (g.phase == 1) {
+            if (_baselines[tag].blockNumber != 0) revert BaselineExists();
+            uint256 referenceBalance = _balance(g.profitToken);
+            _baselines[tag] = Baseline({
+                profitToken: g.profitToken, blockNumber: uint64(block.number), balance: referenceBalance
+            });
+            _run(calls);
+            emit PhaseOpened(tag, g.profitToken, referenceBalance);
+            return 0;
+        }
+
+        uint256 balBefore;
+        if (g.phase == 2) {
+            Baseline memory baseline = _baselines[tag];
+            if (baseline.blockNumber == 0) revert BaselineMissing();
+            if (baseline.blockNumber != block.number || baseline.profitToken != g.profitToken) {
+                revert BaselineMismatch();
+            }
+            balBefore = baseline.balance;
+            // Delete before the external calls. A later revert restores it; a
+            // successful close can never be replayed against a stale baseline.
+            delete _baselines[tag];
+        } else {
+            balBefore = _balance(g.profitToken);
+        }
+
+        _run(calls);
+        profit = _settle(tag, g, balBefore, gasStart);
+    }
+
+    /// @notice Same as `execute` but funded by a Balancer V2 flash loan (zero fee).
+    /// @dev The borrowed amount is available to the call batch; repayment happens here.
+    function flashExecute(
+        bytes32 tag,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        Call[] calldata calls,
+        Guard calldata g
+    ) external onlySearcher nonReentrant {
+        _checkGuards(g);
+        // A flash loan cannot span two transactions. Flash-funded strategies
+        // are therefore always single-transaction settlements.
+        if (g.phase != 0) revert BadPhase();
+        _flash(tokens, amounts, _encodeFlashData(tag, calls, g));
+    }
+
+    function _flash(address[] calldata tokens, uint256[] calldata amounts, bytes memory data) private {
+        bytes32 slot = _FLASHLOAN_SLOT;
+        assembly ("memory-safe") {
+            tstore(slot, 1)
+        }
+        IBalancerVault(BALANCER_VAULT).flashLoan(address(this), tokens, amounts, data);
+        assembly ("memory-safe") {
+            tstore(slot, 0)
+        }
+    }
+
+    function _encodeFlashData(bytes32 tag, Call[] calldata calls, Guard calldata g)
+        private
+        view
+        returns (bytes memory)
+    {
+        return abi.encode(tag, calls, g, _balance(g.profitToken), gasleft());
+    }
+
+    /// @inheritdoc IFlashLoanRecipient
+    function receiveFlashLoan(
+        address[] memory tokens,
+        uint256[] memory amounts,
+        uint256[] memory feeAmounts,
+        bytes memory userData
+    ) external override {
+        bytes32 slot = _FLASHLOAN_SLOT;
+        uint256 armed;
+        assembly ("memory-safe") {
+            armed := tload(slot)
+        }
+        if (msg.sender != BALANCER_VAULT || armed == 0) revert BadFlashCallback();
+
+        (bytes32 tag, Call[] memory calls, Guard memory g, uint256 balBefore, uint256 gasStart) =
+            abi.decode(userData, (bytes32, Call[], Guard, uint256, uint256));
+
+        _runMemory(calls);
+
+        // Repay the vault.
+        uint256 n = tokens.length;
+        for (uint256 i; i < n;) {
+            _safeTransfer(tokens[i], BALANCER_VAULT, amounts[i] + feeAmounts[i]);
+            unchecked {
+                ++i;
+            }
+        }
+
+        _settle(tag, g, balBefore, gasStart);
+    }
+
+    // ---------------------------------------------------------------------
+    // Just-in-time liquidity support (UniswapV3 mint callback)
+    // ---------------------------------------------------------------------
+
+    /// @notice Arms the V3 mint callback for exactly one pool, for the rest of
+    ///         this transaction. Must be the call immediately preceding a
+    ///         `pool.mint(...)` in the batch.
+    /// @dev Callable only by the contract itself (i.e. from inside a batch), so
+    ///      an external actor can never arm it.
+    function armV3Callback(address pool) external {
+        if (msg.sender != address(this)) revert NotSearcher();
+        bytes32 slot = _V3_CALLBACK_SLOT;
+        assembly ("memory-safe") {
+            tstore(slot, pool)
+        }
+    }
+
+    /// @notice UniswapV3 pulls the owed token amounts through this callback.
+    function uniswapV3MintCallback(uint256 amount0Owed, uint256 amount1Owed, bytes calldata data) external {
+        bytes32 slot = _V3_CALLBACK_SLOT;
+        address armed;
+        assembly ("memory-safe") {
+            armed := tload(slot)
+        }
+        if (armed == address(0) || msg.sender != armed) revert BadFlashCallback();
+        assembly ("memory-safe") {
+            tstore(slot, 0)
+        }
+        (address token0, address token1) = abi.decode(data, (address, address));
+        if (amount0Owed != 0) _safeTransfer(token0, msg.sender, amount0Owed);
+        if (amount1Owed != 0) _safeTransfer(token1, msg.sender, amount1Owed);
+    }
+
+    // ---------------------------------------------------------------------
+    // Views used by the off-chain simulator
+    // ---------------------------------------------------------------------
+
+    /// @notice Dry-run a batch and report the realised profit-token delta,
+    ///         without enforcing any profit requirement.
+    ///
+    /// @dev **This is an `eth_call`-only entry point and is not usable in a
+    ///      transaction.** It executes the batch for real against the current
+    ///      state and then reports the delta, so allowing it on-chain would let
+    ///      anyone move the contract's funds through arbitrary calls. The
+    ///      `msg.sender == address(0)` requirement is what makes that
+    ///      impossible: `address(0)` cannot originate a transaction, so this
+    ///      body can only ever run inside a simulated call.
+    ///
+    ///      **How to call it.** Send an `eth_call` with **no `from` field** (or
+    ///      an explicit `from` of the zero address); most clients default to
+    ///      `address(0)` when `from` is omitted. Pair it with state overrides to
+    ///      size an opportunity against a hypothetical state — the usual
+    ///      pattern is to override the executor's token balances, quote several
+    ///      candidate sizes, then submit only the best one through `execute`.
+    ///
+    ///      Callers that cannot omit `from` (some wallets and providers inject
+    ///      one) should use [`quoteFrom`], which is override-friendly, or the
+    ///      simulator's fork path.
+    ///
+    /// @param calls       The batch to dry-run, in order.
+    /// @param profitToken Token the delta is measured in; `address(0)` = native ETH.
+    /// @return delta      Signed change in the executor's `profitToken` balance.
+    ///                    Negative means the batch would lose money.
+    /// @return gasUsed    Gas consumed by the batch, for the bot's gas model.
+    function quote(Call[] calldata calls, address profitToken)
+        external
+        payable
+        returns (int256 delta, uint256 gasUsed)
+    {
+        if (msg.sender != address(0)) revert QuoteIsEthCallOnly();
+        return _quote(calls, profitToken);
+    }
+
+    /// @notice `quote` for callers whose tooling always sets a `from` address.
+    ///
+    /// @dev Same dry-run, same return values, but gated on the caller being a
+    ///      searcher or the owner instead of on `address(0)`. That keeps the
+    ///      "arbitrary calls with the contract's funds" surface closed to the
+    ///      public while letting an allowlisted operator size an opportunity
+    ///      from a wallet, a block explorer, or any provider that injects a
+    ///      `from`.
+    ///
+    ///      **Still intended for `eth_call` only.** Nothing stops a searcher
+    ///      from sending this as a transaction, but doing so would execute the
+    ///      batch with *no profit guard* and pay gas for it — use `execute` for
+    ///      anything that should land on chain.
+    function quoteFrom(Call[] calldata calls, address profitToken)
+        external
+        payable
+        onlySearcher
+        returns (int256 delta, uint256 gasUsed)
+    {
+        return _quote(calls, profitToken);
+    }
+
+    function _quote(Call[] calldata calls, address profitToken)
+        private
+        returns (int256 delta, uint256 gasUsed)
+    {
+        uint256 gasStart = gasleft();
+        uint256 before = _balance(profitToken);
+        _run(calls);
+        // Balances are bounded by total supply, so neither cast can overflow
+        // int256 for any real token.
+        delta = int256(_balance(profitToken)) - int256(before);
+        gasUsed = gasStart - gasleft();
+    }
+
+    // ---------------------------------------------------------------------
+    // Internals
+    // ---------------------------------------------------------------------
+
+    function _checkGuards(Guard calldata g) private view {
+        if (g.blockDeadline != 0 && block.number > g.blockDeadline) revert Deadline();
+        if (g.maxBaseFee != 0 && block.basefee > g.maxBaseFee) revert BaseFeeTooHigh();
+        if (g.bribeBps > 10_000) revert BadBribe();
+        if (g.phase > 2) revert BadPhase();
+        if (g.phase == 1 && (g.minProfit != 0 || g.bribeBps != 0)) revert BadPhase();
+    }
+
+    function _settle(bytes32 tag, Guard memory g, uint256 balBefore, uint256 gasStart)
+        private
+        returns (uint256 profit)
+    {
+        uint256 balAfter = _balance(g.profitToken);
+        // Underflow-safe: a negative delta is zero gross profit and fails any
+        // non-zero retained-profit requirement below.
+        profit = balAfter > balBefore ? balAfter - balBefore : 0;
+
+        uint256 bribe;
+        // Non-ETH/WETH strategies bid through priority fee; do not perform
+        // irrelevant multiplication on arbitrary token balances.
+        if (g.bribeBps != 0 && profit != 0 && (g.profitToken == address(0) || g.profitToken == WETH)) {
+            // Overflow-safe floor(profit * bps / 10_000). Splitting quotient
+            // and remainder is exact and keeps every intermediate <= profit.
+            bribe = (profit / 10_000) * g.bribeBps + ((profit % 10_000) * g.bribeBps) / 10_000;
+            if (bribe != 0) {
+                if (g.profitToken == WETH) IWETH(WETH).withdraw(bribe);
+                (bool ok,) = block.coinbase.call{value: bribe}("");
+                if (!ok) revert BribeFailed();
+            }
+        }
+
+        uint256 retained = profit - bribe;
+        if (retained < g.minProfit) revert Unprofitable(retained, g.minProfit);
+
+        emit Executed(tag, g.profitToken, profit, bribe, retained, gasStart - gasleft());
+    }
+
+    function _run(Call[] calldata calls) private returns (bytes[] memory out) {
+        uint256 n = calls.length;
+        out = new bytes[](n);
+        for (uint256 i; i < n;) {
+            (bool ok, bytes memory ret) = calls[i].target.call{value: calls[i].value}(calls[i].data);
+            if (!ok) revert CallFailed(i, ret);
+            out[i] = ret;
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _runMemory(Call[] memory calls) private {
+        uint256 n = calls.length;
+        for (uint256 i; i < n;) {
+            (bool ok, bytes memory ret) = calls[i].target.call{value: calls[i].value}(calls[i].data);
+            if (!ok) revert CallFailed(i, ret);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _balance(address token) private view returns (uint256) {
+        if (token == address(0)) return address(this).balance;
+        return IERC20(token).balanceOf(address(this));
+    }
+
+    function _safeTransfer(address token, address to, uint256 amount) private {
+        (bool ok, bytes memory ret) = token.call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        // Non-standard tokens return nothing on success; treat empty as ok.
+        if (!ok || (ret.length != 0 && !abi.decode(ret, (bool)))) {
+            revert TransferFailed(token, to, amount);
+        }
+    }
+}

@@ -1,0 +1,40 @@
+# JerseyMikes searcher — hardened systemd unit.
+# Install paths and user creation are documented in docs/DEPLOYMENT.md.
+
+[Unit]
+Description=JerseyMikes MEV searcher
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=jerseymikes
+Group=jerseymikes
+WorkingDirectory=/opt/jerseymikes
+EnvironmentFile=/etc/jerseymikes/env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/jerseymikes/mev-bot
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/jerseymikes
+
+[Install]
+WantedBy=multi-user.target
