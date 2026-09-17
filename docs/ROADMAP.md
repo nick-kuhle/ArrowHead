@@ -28,12 +28,9 @@ engineer in the room. Operators hand engineering back: qualification verdicts,
 funnel readings, and alert history.
 
 **Current state:** the build phase is complete for Ethereum mainnet and for the
-Base safety foundation. One lane is deliberately outside that statement: the
-**directional new-token sniper** (`docs/SNIPER.md`) is implemented, tested and
-shipped disabled, but is not yet wired to live execution and has its own
-explicit remaining-work list. It is separated from the atomic engine by design
-— different contract, different risk envelope, different arming — so its
-incompleteness blocks nothing else. Phase 0–3 are shipped; the remaining unchecked boxes
+Base safety foundation. The directional new-token sniper was explicitly removed
+from the product surface; the shipped lanes are atomic and fail-closed.
+Phase 0–3 are shipped; the remaining unchecked boxes
 below are either explicitly out of scope for this phase or are *decisions to be
 written down* rather than code to be authored. The two open Base items are
 tracked in [`BASE_REVENUE_PATH_WORK_ORDER.md`](BASE_REVENUE_PATH_WORK_ORDER.md).
@@ -45,7 +42,7 @@ independently earning its own `PASS`.
 - [x] `MevExecutor`: atomic batches, profit guard, Balancer flash loans, V3 mint
       callback, coinbase bribe, searcher allowlist
 - [x] Rust engine: ingest → strategies → risk → simulation → SQLite → REST/SSE
-- [x] Five strategies: sandwich, JIT, atomic arb, Aave V3 liquidation, sniper
+- [x] Four strategy families: sandwich, JIT, atomic arb, and Aave V3 liquidation
 - [x] Dual simulation: local anvil fork + relay `eth_callBundle`
 - [x] Next.js console: P/L, equity curve, transaction history, live feeds,
       contract control panel
@@ -140,7 +137,7 @@ Remaining Phase 2 coverage:
 the risk envelope at runtime and walks the go-live checklist, and the
 simulator now decodes revert reasons (incl. `CallFailed` inner data) and
 funds the fixture executor with WETH — **that fix reset the
-sandwich/sniper/JIT funnel baseline**, so read those rows from that merge
+sandwich/JIT funnel baseline**, so read those rows from that merge
 forward when judging the W6/W4 gates. What remains of Phase 2 is decisions,
 not code: fill `W6_MEMO.md` from the funnel panel's gap card and flip or
 close W6; compare 3-leg `candidatesEmitted` against the 2-leg baseline for
