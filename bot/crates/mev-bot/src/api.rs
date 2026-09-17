@@ -8,7 +8,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
-use alloy_primitives::U256;
+use alloy_primitives::{Address, U256};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::http::{header, HeaderValue, Method};
@@ -24,16 +24,33 @@ use tower_http::cors::CorsLayer;
 
 use crate::engine::Engine;
 use crate::risk::RiskPatch;
+use crate::cow::{validate_order, CowOrderRequest};
 use crate::types::Strategy;
 
 #[derive(Clone)]
 pub struct ApiState {
     pub engine: Arc<Engine>,
+    pub cow_intents_enabled: bool,
+    pub cow_settlement: Option<Address>,
+    pub cow_max_validity_secs: u64,
 }
 
 pub fn router(engine: Arc<Engine>) -> Router {
     let cfg = engine.cfg.clone();
-    let state = ApiState { engine };
+    let state = ApiState {
+        engine,
+        cow_intents_enabled: std::env::var("COW_INTENTS_ENABLED")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(false),
+        cow_settlement: std::env::var("COW_SETTLEMENT_ADDRESS")
+            .ok()
+            .and_then(|v| v.parse().ok()),
+        cow_max_validity_secs: std::env::var("COW_INTENT_MAX_VALIDITY_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(900),
+    };
 
     // Mutating endpoints, split out so an auth layer can be applied to them
     // alone. Reads stay open: they are already public information for anyone
@@ -43,6 +60,7 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .route("/api/risk", post(set_risk))
         .route("/api/risk/reset", post(reset_risk))
         .route("/api/qualification", post(set_qualification))
+        .route("/api/intents/validate", post(validate_cow_intent))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     // Browsers get no cross-origin access by default. The dashboard reaches
@@ -91,6 +109,63 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .merge(mutating)
         .layer(cors)
         .with_state(state)
+}
+
+/// Validate a native CoW GPv2 order without accepting or submitting it.
+///
+/// This endpoint is deliberately disabled unless explicitly enabled and always
+/// sits behind the mutating bearer-token layer. Validation is not persistence,
+/// quoting, solver selection, or settlement authorization; those are separate
+/// gates that must be implemented before this becomes an ingestion endpoint.
+async fn validate_cow_intent(
+    State(s): State<ApiState>,
+    Json(order): Json<CowOrderRequest>,
+) -> Response {
+    if !s.cow_intents_enabled {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"ok": false, "error": "CoW intent validation is disabled"})),
+        )
+            .into_response();
+    }
+    let Some(settlement) = s.cow_settlement else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"ok": false, "error": "COW_SETTLEMENT_ADDRESS is not configured"})),
+        )
+            .into_response();
+    };
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match validate_order(
+        &order,
+        s.engine.cfg.chain.chain_id,
+        settlement,
+        now_secs,
+        s.cow_max_validity_secs,
+    ) {
+        Ok(validated) => (
+            StatusCode::OK,
+            Json(json!({
+                "ok": true,
+                "status": "validated_shadow_only",
+                "uid": format!("{:#x}", validated.uid),
+                "digest": format!("{:#x}", validated.digest),
+                "owner": format!("{:#x}", validated.owner),
+                "sellToken": format!("{:#x}", validated.sell_token),
+                "buyToken": format!("{:#x}", validated.buy_token),
+                "validTo": validated.valid_to,
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 /// Bearer-token gate for the mutating endpoints.

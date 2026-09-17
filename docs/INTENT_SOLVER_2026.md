@@ -6,7 +6,8 @@ ArrowHead now contains a pure native CoW GPv2 order validator in
 `bot/crates/mev-bot/src/cow.rs`. It computes the chain-specific EIP-712 digest,
 recovers an EOA owner, derives the 56-byte order UID, and rejects expired,
 overlong, malformed, non-ERC20, non-EIP712, zero-value, and fee-invalid orders.
-It does not accept network traffic, persist orders, or submit settlements yet.
+An authenticated, opt-in `POST /api/intents/validate` shadow endpoint exposes
+that validation result. It does not persist orders or submit settlements yet.
 
 ## 2026 Market Position
 
@@ -29,8 +30,8 @@ not simply supporting more JSON formats.
 
 ## Required Production Sequence
 
-1. Add an authenticated, bounded `POST /api/intents` endpoint that accepts
-   native CoW orders and returns the canonical UID/status.
+1. Promote `POST /api/intents/validate` into an authenticated, bounded
+   `POST /api/intents` endpoint only after the persistence gates below pass.
 2. Add transactional SQLite deduplication and an append-only intent transition
    journal. Accepted intent state must never use the drop-on-full telemetry
    queue.
