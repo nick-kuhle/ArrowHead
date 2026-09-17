@@ -8,7 +8,9 @@ recovers an EOA owner, derives the 56-byte order UID, and rejects expired,
 overlong, malformed, non-ERC20, non-EIP712, zero-value, and fee-invalid orders.
 An authenticated, opt-in `POST /api/intents/validate` shadow endpoint exposes
 that validation result and durably deduplicates accepted shadow records in
-SQLite. It does not quote, select a solver, or submit settlements yet.
+SQLite. `POST /api/intents/score` evaluates already-constructed candidate fills
+against directed-pair references, gas, and expected revert risk. Neither
+endpoint quotes, selects a solver, or submits settlements.
 
 ## 2026 Market Position
 

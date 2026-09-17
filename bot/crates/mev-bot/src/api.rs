@@ -25,6 +25,7 @@ use tower_http::cors::CorsLayer;
 use crate::engine::Engine;
 use crate::risk::RiskPatch;
 use crate::cow::{validate_order, CowOrderRequest};
+use crate::cow_auction::{score_shadow_solution, CowAuction, CowFillCandidate};
 use crate::types::Strategy;
 
 #[derive(Clone)]
@@ -61,6 +62,7 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .route("/api/risk/reset", post(reset_risk))
         .route("/api/qualification", post(set_qualification))
         .route("/api/intents/validate", post(validate_cow_intent))
+        .route("/api/intents/score", post(score_cow_intent_solution))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     // Browsers get no cross-origin access by default. The dashboard reaches
@@ -172,6 +174,36 @@ async fn validate_cow_intent(
             )
                 .into_response(),
         },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"ok": false, "error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct CowScoreRequest {
+    auction: CowAuction,
+    candidates: Vec<CowFillCandidate>,
+}
+
+/// Score an already-constructed CoW candidate batch in shadow mode. This is a
+/// scoring endpoint, not a solver submission endpoint: it never signs, sends,
+/// or turns user data into executor calls.
+async fn score_cow_intent_solution(
+    State(s): State<ApiState>,
+    Json(request): Json<CowScoreRequest>,
+) -> Response {
+    if !s.cow_intents_enabled {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"ok": false, "error": "CoW intent scoring is disabled"})),
+        )
+            .into_response();
+    }
+    match score_shadow_solution(&request.auction, &request.candidates) {
+        Ok(score) => (StatusCode::OK, Json(json!({"ok": true, "score": score}))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"ok": false, "error": error.to_string()})),
