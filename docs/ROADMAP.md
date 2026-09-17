@@ -37,6 +37,12 @@ tracked in [`BASE_REVENUE_PATH_WORK_ORDER.md`](BASE_REVENUE_PATH_WORK_ORDER.md).
 Nothing on the live path is stubbed, and no strategy can broadcast without
 independently earning its own `PASS`.
 
+The next opportunity surface is the intent solver boundary documented in
+[`INTENT_SOLVER_2026.md`](INTENT_SOLVER_2026.md). Its CoW order authentication
+foundation is implemented, but no signed intent is accepted or submitted until
+the durable journal, current protocol onboarding terms, settlement authorization,
+optimizer fairness checks, and exact-payload simulation gates are shipped.
+
 ## Phase 0 — this PR
 
 - [x] `MevExecutor`: atomic batches, profit guard, Balancer flash loans, V3 mint

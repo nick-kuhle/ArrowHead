@@ -22,6 +22,7 @@ pub mod attribution;
 pub mod bundle;
 pub mod competition;
 pub mod config;
+pub mod cow;
 pub mod dex;
 pub mod engine;
 pub mod flashblocks;

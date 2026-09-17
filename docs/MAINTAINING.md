@@ -305,14 +305,12 @@ against a shrinking share of the flow.
   trend down with it. The `MEV_SHARE_SSE_URL` and
   `EXTRA_MEMPOOL_WS` are the partial mitigations already in the
   config.
-- The long-term direction is **intent auctions**: protocols where
-  the user signs an "intent" and a network of solvers compete to
-  fill it, with the searcher competing for the right to be the
-  solver. The bot's executor contract is the right primitive for
-  this; what's missing is a solver-network integration. This is
-  where the highest-value strategy work is over the next 1–2
-  years, and it's not in the current roadmap. Worth a roadmap
-  item.
+- The long-term direction is **intent auctions**. ArrowHead now has the pure
+  native-CoW order digest/recovery boundary in `bot/crates/mev-bot/src/cow.rs`;
+  the authenticated auction adapter, optimizer, durable intent journal, and
+  settlement authorization remain gated work. See
+  [`INTENT_SOLVER_2026.md`](INTENT_SOLVER_2026.md). Never treat a signed intent
+  as permission to submit arbitrary executor calldata.
 
 ### 6.2 L2 sequencer economics are evolving
 
@@ -471,4 +469,3 @@ first thing they say is "where does this start?", something has
 gone wrong. The answer should be: `bot/crates/mev-bot/src/main.rs`,
 one function, ~150 lines, and from there the engine is in
 `engine.rs` and the rest follows. Keep that property.
-
