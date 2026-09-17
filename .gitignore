@@ -31,3 +31,4 @@ data/
 *.swp
 frontend/tsconfig.tsbuildinfo
 next-env.d.ts
+.github/
