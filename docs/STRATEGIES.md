@@ -21,8 +21,6 @@ approval — a live candidate still cannot broadcast until it earns its own
 | `liquidation_morpho` | live candidate | ditto |
 | `liquidation_maker` | live candidate | ditto |
 | `jit` | shadow-only | Settlement shape |
-| `sniper` (atomic probe) | shadow-only | Settlement shape |
-| `sniper` (directional lane) | separate lane | Not an atomic strategy at all — see [`SNIPER.md`](SNIPER.md) |
 | `oracle_frontrun` | shadow-only | Ordering assumption |
 
 `Strategy::shadow_only_reason()` carries the specific reason for each
@@ -35,7 +33,7 @@ every liquidation netted to zero and could not clear `MIN_NET_PROFIT_WEI` — th
 math was correct and tested, but structurally unable to produce a bid. With the
 profit token priced at the pinned pre-bundle fork block (V3 QuoterV2 → V2
 reserves → fail closed, less `VALUATION_HAIRCUT_BPS`; see `RISK.md`), the
-blocker is gone. Pricing does **not** rescue JIT, the sniper, or oracle
+blocker is gone. Pricing does **not** rescue JIT or oracle
 front-running: their limitations are settlement- and ordering-shaped, not
 valuation-shaped.
 
@@ -368,36 +366,6 @@ the pattern exists before anyone cares about winning it — Chainlink
 **Not yet.** Redstone/Api3 oracle families, OCR proposal/aggregation rounds,
 the Maker medianizer itself (an hour ahead of the OSM — needs addresses the
 operator trusts), decoding the upcoming price pre-simulation.
-
-## 5. New-token sniper — `strategies/sniper.rs`
-
-**Trigger.** `PairCreated` logs, plus mempool transactions carrying the
-selectors that make a token tradable (`addLiquidityETH`, `openTrading`,
-`enableTrading`, `removeLimits`, …).
-
-**Probe.** An atomic **buy → sell round trip** in a single batch. This is both
-the entry and the safety check:
-
-| round trip returns | verdict |
-| --- | --- |
-| nothing / < 50% | honeypot — token is blacklisted |
-| 50–98% | transfer tax |
-| 98–100% | clean (just the 2 × 30 bps AMM fee) |
-| > 100% | genuinely mispriced launch — profitable |
-
-Only the last case is net-positive, which is exactly the case the executor lets
-through. Everything else is recorded as a rejected observation, which is the
-point: the dashboard shows how much of new-token flow is a trap.
-
-**Not yet.** Simulating the token's `transfer` hooks for blacklist/cooldown
-logic, and liquidity-lock checks.
-
-**Holding a position across blocks is no longer out of scope — but it is not
-this strategy.** The directional sniper is a *separate lane* with its own
-contract, risk envelope, storage and console panel, precisely because holding
-inventory breaks the atomic profit-or-revert invariant every strategy on this
-page depends on. The probe above feeds it: its verdict is the directional
-lane's honeypot admission gate. See [`SNIPER.md`](SNIPER.md).
 
 ## 6. Reading the funnel
 

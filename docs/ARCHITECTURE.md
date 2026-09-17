@@ -11,7 +11,7 @@
                           ┌─────────────▼─────────────┐
                           │ strategies/               │  ← pool cache, router
                           │  sandwich · jit · arb ·   │    calldata decoding,
-                          │  sniper · liq ×4 ·        │    AMM math, and the
+                          │  liq ×4 ·                 │    AMM math, and the
                           │  oracle_frontrun          │    near-miss leads
                           └─────────────┬─────────────┘    registry
                                         │ Opportunity
@@ -69,7 +69,7 @@ the victim replay was not faithful.
 | `bot/crates/mev-bot/src/rpc.rs` | JSON-RPC client, WS subscriptions, SSE reader |
 | `bot/crates/mev-bot/src/dex.rs` | Constant-product math, optimal sandwich/arb sizing, V3 quoter |
 | `bot/crates/mev-bot/src/dex/edge.rs` | Directed venue edges: V2 adapter + QuoterV2 quote book (never a V2 approximation of V3) |
-| `bot/crates/mev-bot/src/strategies/` | The strategy rows (sandwich ×2, JIT, arb, liquidations ×4, oracle front-run, sniper) plus the shared near-miss `leads.rs` registry |
+| `bot/crates/mev-bot/src/strategies/` | The strategy rows (sandwich ×2, JIT, arb, liquidations ×4, oracle front-run) plus the shared near-miss `leads.rs` registry |
 | `bot/crates/mev-bot/src/sim/` | anvil fork backend + relay `eth_callBundle` backend |
 | `bot/crates/mev-bot/src/signer.rs`, `rlp.rs` | EIP-1559 signing and a 60-line RLP encoder |
 | `bot/crates/mev-bot/src/store.rs` | SQLite schema and aggregate queries |
@@ -122,36 +122,6 @@ post-mortem replay of the winning builder's block against the fork: our
 strategies propose opportunities against exactly the transactions that actually
 landed, and the simulator records whether value was extractable. See
 [`BLOXROUTE_RELAY.md`](BLOXROUTE_RELAY.md).
-
-## The directional sniper lane (deliberately outside the engine)
-
-```
-engine.rs  ──▶  strategies ──▶ risk ──▶ sim ──▶ bundle ──▶ submission
-   │                                                          (atomic, profit-or-revert,
-   │                                                           MevExecutor)
-   │
-   └──▶ sniper/  ──▶ gates ──▶ position ──▶ portfolio
-                                                          (directional, budget-bounded,
-                                                           SniperVault)
-```
-
-`sniper/` is a peer of the strategy pipeline, not a member of it. It owns:
-
-- `sniper/params.rs` — the `SNIPER_*` envelope, validation, runtime patching
-- `sniper/gates.rs` — honeypot verdicts and every admission gate
-- `sniper/position.rs` — the position state machine and exit decisions
-- `sniper/portfolio.rs` — pure aggregation for the console panel
-- `sniper/mod.rs` — `SniperLane`, the runtime state holder
-
-plus three SQLite tables (`sniper_positions`, `sniper_fills`,
-`sniper_token_verdicts`), six `/api/sniper/*` routes, and one contract
-(`SniperVault.sol`).
-
-**Nothing in the atomic path reads any of it**, and the lane calls into none of
-`bundle.rs`, `submission.rs` or `qualification.rs`. Deleting the directory, the
-tables and the three call sites in `lib.rs`, `engine.rs` and `api.rs` removes
-the lane whole. See [`SNIPER.md`](SNIPER.md) for why the separation is worth
-this much structure.
 
 ## Multi-chain (Ethereum + Base, one process per chain)
 

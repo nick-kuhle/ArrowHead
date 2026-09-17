@@ -9,9 +9,9 @@ interface IERC20Lite {
     function transfer(address to, uint256 amount) external returns (bool);
 }
 
-/// @dev A faithful-enough UniswapV2 pair for the sniper **simulation fixture**.
+/// @dev A faithful-enough UniswapV2 pair for V2 simulation fixtures.
 ///
-/// The bot's sniper calldata builder (`sniper/calldata.rs`) encodes the real
+/// The bot's V2 calldata builder encodes the real
 /// V2 flash-swap flow: transfer the input token to the pair first, then call
 /// `swap(amount0Out, amount1Out, to, data)` with optimistic outputs and a
 /// constant-product check on the back side. `MockUniV2Pair` is pull-based and

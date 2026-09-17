@@ -56,7 +56,7 @@ Smoke still refuses to send unless **every other gate** is green:
 9. the exact reserved-nonce payload simulates successfully and is net-positive
 
 Unprofitable sims are never sent. Shadow-only strategies (`jit`, all
-liquidations, `oracle_frontrun`, `sniper`) are never sent. Do not flip
+liquidations, `oracle_frontrun`) are never sent. Do not flip
 `DECODE_UNIVERSAL_ROUTER`. Do not raise `ARB_MAX_CYCLE_LEN`. Do not wipe
 the database.
 
@@ -147,8 +147,6 @@ STRATEGY_LIQUIDATION_COMPOUND=true
 STRATEGY_LIQUIDATION_MORPHO=true
 STRATEGY_LIQUIDATION_MAKER=true
 STRATEGY_ORACLE_FRONTRUN=true
-STRATEGY_SNIPER=true
-
 DECODE_UNIVERSAL_ROUTER=false
 ARB_MAX_CYCLE_LEN=3
 ```

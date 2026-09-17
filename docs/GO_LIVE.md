@@ -62,50 +62,40 @@ Two facts that answer most confusion:
 ## Path A — production wizard (easiest)
 
 Open the console and scroll to **"Production Go-Live Wizard"**. The wizard is
-five cards, in order: network and wallet, EOA/key separation, deployment of
-both `MevExecutor` and `SniperVault`, funding/budget setup, then pre-flight and
-independent live switches. A deployment never arms either lane.
+four cards, in order: network and wallet, EOA/key separation, deployment and
+funding of `MevExecutor`, then pre-flight and the live switch. Deployment never
+arms the bot.
 
 The wizard also exposes a dynamic operator soak threshold. Set it to the
 window you are actually willing to accept (for example 1, 24, or 168 hours).
 The change is sent to the bot's authenticated control plane and re-runs the
 normal evidence evaluation; it does not bypass continuity, sample, accuracy,
-or independent-comparison gates. The atomic engine and directional sniper have
-separate runtime switches, so the sniper may be enabled while atomic MEV stays
-in simulation.
+or independent-comparison gates.
 
 Base uses the same wizard with the Base WETH binding and the Base bot selected
 by `CHAINS`. Its pre-flight accepts a raw/chain-block path rather than requiring
 an Ethereum relay market. The canonical stream URLs are
 `/api/stream?chain=ethereum` and `/api/stream?chain=base`.
 
-The wizard deploys the exact creation bytecode for both contracts, and its
+The wizard deploys the exact creation bytecode for `MevExecutor`, and its
 buttons are disabled until the wallet is on the selected chain and has gas.
-`MevExecutor` uses the chain's Balancer V2 vault and WETH. `SniperVault` uses
-that chain's WETH plus the daily and lifetime budget values entered in the
-card. The owner wallet must explicitly allowlist the atomic and dedicated
-sniper searcher addresses; the wizard verifies both mappings before reporting
-success.
+`MevExecutor` uses the chain's Balancer V2 vault and WETH. The owner wallet
+must explicitly allowlist the searcher address; the wizard verifies the
+mapping before reporting success.
 
 1. **Connect a wallet on the selected chain.** This wallet is the owner for
    browser deployments and pays gas.
-2. **Verify the EOA separation.** The panel shows the atomic searcher and
-   `SNIPER_SEARCHER_ADDRESS`; it never reads or displays either private key.
-3. **Deploy or paste both contracts.** The UI waits for receipts and verifies
-   bytecode, owner, WETH, and searcher allowlisting. The CLI alternatives are
-   `script/Deploy.s.sol` and `script/DeploySniperVault.s.sol`.
-4. **Set the vault budget and fund it with WETH.** The panel wraps ETH and
-   transfers WETH to the selected vault or executor. `SniperVault` enforces
-   its daily/total entry ceilings on-chain; drawdown remains a separate
-   off-chain sniper control.
-5. **Run pre-flight and make an explicit runtime choice.** RPC, chain feed,
-   relay/raw path, and qualification state are shown. The atomic and sniper
-   buttons are independent and require confirmation. Boot capability still
+2. **Verify the EOA separation.** The panel shows the searcher address; it
+   never reads or displays the private key.
+3. **Deploy or paste `MevExecutor`.** The UI waits for receipts and verifies
+   bytecode, owner, WETH, and searcher allowlisting. The CLI alternative is
+   `script/Deploy.s.sol`.
+4. **Run pre-flight and make an explicit runtime choice.** RPC, chain feed,
+   relay/raw path, and qualification state are shown. Boot capability still
    comes only from the environment and a restart.
-6. **Persist the generated lines.** Copy `EXECUTOR_ADDRESS`,
-   `SEARCHER_ADDRESS`, `SNIPER_VAULT_ADDRESS`, and
-   `SNIPER_SEARCHER_ADDRESS` into the appropriate chain env file before a
-   restart. Runtime patches are not a replacement for durable configuration.
+5. **Persist the generated lines.** Copy `EXECUTOR_ADDRESS` and
+   `SEARCHER_ADDRESS` into the appropriate chain env file before a restart.
+   Runtime patches are not a replacement for durable configuration.
 
 Costs you should expect on path A: one deployment (~2–3M gas), an optional funding
 transfer (21k gas + the amount sent), one `setSearcher` (~50k gas). At 1–2
@@ -125,19 +115,14 @@ forge script script/Deploy.s.sol --fork-url $ETH_HTTP_URL
 # real deployment (uses DEPLOYER_PRIVATE_KEY from .env):
 forge script script/Deploy.s.sol --rpc-url $ETH_HTTP_URL --broadcast --verify
 
-# isolated directional vault; on Base use $BASE_HTTP_URL
-forge script script/DeploySniperVault.s.sol --rpc-url $ETH_HTTP_URL --broadcast
 ```
 
 `Deploy.s.sol` selects Base WETH automatically when the connected chain is
 8453 (an explicit `WETH_ADDRESS` still wins), and — if `SEARCHER_ADDRESS` is
 set — allowlists the atomic searcher in the same transaction batch.
-`DeploySniperVault.s.sol` selects the chain WETH, uses the
-`SNIPER_DAILY_BUDGET_WEI` / `SNIPER_TOTAL_BUDGET_WEI` values, and allowlists
-`SNIPER_SEARCHER_ADDRESS` when supplied. With `--verify` and
-`ETHERSCAN_API_KEY` set, the executor source is verified on Etherscan so anyone
-can read it. Keep `DEPLOYER_PRIVATE_KEY` in the `.env` file only long enough to
-deploy, then clear it.
+With `--verify` and `ETHERSCAN_API_KEY` set, the executor source is verified on
+Etherscan so anyone can read it. Keep `DEPLOYER_PRIVATE_KEY` in the `.env` file
+only long enough to deploy, then clear it.
 
 ## After deploying — verify before touching anything else
 

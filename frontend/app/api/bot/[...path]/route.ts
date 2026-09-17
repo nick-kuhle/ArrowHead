@@ -13,10 +13,6 @@ import {
   demoReorgs,
   demoSeries,
   demoSimulations,
-  demoSniperMode,
-  demoSniperParams,
-  demoSniperPortfolio,
-  demoSniperVault,
   demoStatus,
 } from "@/lib/demo";
 
@@ -49,7 +45,7 @@ let demoRisk = {
   strategies: [
     "sandwich", "sandwich_v3", "jit", "atomic_arb", "liquidation",
     "liquidation_compound", "liquidation_morpho", "liquidation_maker",
-    "oracle_frontrun", "sniper",
+    "oracle_frontrun",
   ].map((name) => ({name, enabled: true, bootEnabled: true})),
   killSwitch: {tripped: false, cumulativeNetWei: "-1200000000000000"},
 };
@@ -75,11 +71,6 @@ const DEMO_ELIGIBILITY = [
     name: "jit",
     liveCandidate: false,
     shadowOnlyReason: "position is not yet unwound to one profit token",
-  },
-  {
-    name: "sniper",
-    liveCandidate: false,
-    shadowOnlyReason: "round-trip probe is not a certified profitable execution strategy",
   },
   {
     name: "oracle_frontrun",
@@ -165,8 +156,6 @@ function demoFor(path: string, search: URLSearchParams): unknown {
         chainId: 1,
         executor: demoStatus().executor,
         searcher: "0x00000000000000000000000000000000000f0000",
-        sniperSearcher: "0x00000000000000000000000000000000000f0001",
-        sniperSearcherKeyConfigured: false,
         liveExecution: demoLive,
         liveArmed: true,
         // Mirrors `Strategy::live_candidate()` / `shadow_only_reason()` in the
@@ -194,20 +183,6 @@ function demoFor(path: string, search: URLSearchParams): unknown {
       return {summary: {matches: 0, highConfidence: 0}, matches: []};
     case "reorgs":
       return demoReorgs();
-    // Directional sniper lane. The demo view shows a realistic mixed book but
-    // always reports the lane as disarmed, matching the shipped defaults.
-    case "sniper/portfolio":
-      return demoSniperPortfolio();
-    case "sniper/params":
-      return demoSniperParams();
-    case "sniper/vault":
-      return demoSniperVault();
-    case "sniper/positions":
-      return {positions: []};
-    case "sniper/mode":
-      return demoSniperMode();
-    case "sniper/sim-fixture":
-      return {ready: false, blocker: "demo mode: no local fork", demo: true};
     default:
       return {error: `unknown endpoint ${path}`};
   }
@@ -296,59 +271,6 @@ export async function POST(req: NextRequest, {params}: {params: Promise<{path: s
   // the switcher always sends the active slug, and a missing slug means the
   // first (default) chain, never a cross-chain write.
   const chainSlug = req.nextUrl.searchParams.get("chain");
-
-  // The runtime risk endpoints are forwarded verbatim (bar JSON parsing) —
-  // validation is the bot's job and its 400 reason must reach the panel.
-  // Sniper-lane mutations are forwarded verbatim exactly like the risk
-  // endpoints: validation lives in the bot and its 400 reasons must reach the
-  // panel unchanged. There is deliberately NO demo fallback that "applies" a
-  // sniper patch — pretending to arm a lane that commits real capital is the
-  // one place a convincing demo would be actively dangerous.
-  const SNIPER_MUTATIONS = ["sniper/params", "sniper/halt", "sniper/resume", "sniper/buy", "sniper/sell", "sniper/trade", "sniper/paper/reset", "sniper/mode", "sniper/sim-fixture/init"];
-  if (SNIPER_MUTATIONS.includes(route)) {
-    let body: unknown = {};
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
-    }
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
-      const upstream = await fetch(botUpstreamUrl(`/api/${route}`, chainSlug), {
-        method: "POST",
-        signal: controller.signal,
-        headers: {"content-type": "application/json", ...botAuthHeaders(chainSlug)},
-        body: JSON.stringify(body),
-      });
-      clearTimeout(timer);
-      const data = (await upstream
-        .json()
-        .catch(() => ({error: `bot returned HTTP ${upstream.status}`}))) as Record<string, unknown>;
-      return new Response(JSON.stringify({...data, ok: upstream.ok, demo: false}), {
-        status: upstream.status,
-        headers: {"content-type": "application/json", "x-data-source": "bot"},
-      });
-    } catch {
-      // Resetting an in-memory paper bankroll is the one harmless demo
-      // mutation. Capital-control writes fail closed whenever the selected
-      // bot cannot be reached.
-      if (route === "sniper/paper/reset" && DEMO_MUTATIONS) {
-        const {resetDemoSniperFunds, demoSniperParams} = await import("@/lib/demo");
-        resetDemoSniperFunds();
-        const res = demoSniperParams();
-        return jsonResponse({ok: true, ...res, demo: true}, true);
-      }
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "bot control plane unreachable — the sniper lane was not changed",
-          demo: false,
-        }),
-        {status: 503, headers: {"content-type": "application/json", "x-data-source": "bot"}},
-      );
-    }
-  }
 
   if (route === "qualification") {
     let body: unknown = {};

@@ -4,7 +4,7 @@ import {WalletProvider} from "@/lib/wallet";
 
 export const metadata: Metadata = {
   title: "JerseyMikes — MEV simulation console",
-  description: "Simulation-only MEV searcher: sandwich, JIT, atomic arb, liquidation, sniper",
+  description: "Simulation-only MEV searcher: sandwich, JIT, atomic arb, liquidation",
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {

@@ -47,7 +47,6 @@ const ALL_STRATEGIES: Strategy[] = [
   "liquidation_morpho",
   "liquidation_maker",
   "oracle_frontrun",
-  "sniper",
 ];
 
 const ZERO: FunnelCounters = {

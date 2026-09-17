@@ -45,7 +45,6 @@ const ALL_STRATEGIES: Strategy[] = [
   "liquidation_morpho",
   "liquidation_maker",
   "oracle_frontrun",
-  "sniper",
 ];
 
 const DEFAULTS: RiskValues = {
@@ -258,7 +257,7 @@ STRATEGY_LIQUIDATION_COMPOUND=${enabled("liquidation_compound")}
 STRATEGY_LIQUIDATION_MORPHO=${enabled("liquidation_morpho")}
 STRATEGY_LIQUIDATION_MAKER=${enabled("liquidation_maker")}
 STRATEGY_ORACLE_FRONTRUN=${enabled("oracle_frontrun")}
-STRATEGY_SNIPER=${enabled("sniper")}`;
+`;
   };
 
   const [copied, setCopied] = useState(false);

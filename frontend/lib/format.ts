@@ -62,7 +62,6 @@ export const STRATEGY_LABEL: Record<string, string> = {
   liquidation_morpho: "Liquidation (Morpho)",
   liquidation_maker: "Liquidation (Maker)",
   oracle_frontrun: "Oracle front-run",
-  sniper: "Token sniper",
 };
 
 export const STRATEGY_COLOR: Record<string, string> = {
@@ -75,5 +74,4 @@ export const STRATEGY_COLOR: Record<string, string> = {
   liquidation_morpho: "#fb923c",
   liquidation_maker: "#eab308",
   oracle_frontrun: "#38bdf8",
-  sniper: "#84cc16",
 };

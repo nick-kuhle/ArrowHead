@@ -7,7 +7,6 @@ import ContractPanel from "./ContractPanel";
 import GoLivePanel from "./GoLivePanel";
 import EligibilityPanel from "./EligibilityPanel";
 import RiskPanel from "./RiskPanel";
-import SniperPanel from "./SniperPanel";
 import FunnelPanel from "./FunnelPanel";
 import RelayBlocksPanel from "./RelayBlocksPanel";
 import Phase1Panel from "./Phase1Panel";
@@ -349,7 +348,6 @@ export default function Console() {
           ["history", "Transactions"],
           ["relay", "Relay blocks"],
           ["funnel", "Funnel"],
-          ["sniper", "Sniper"],
           ["risk", "Controls"],
           ["golive", "Go live"],
           ["executor", "Executor"],
@@ -525,7 +523,6 @@ export default function Console() {
                 "liquidation_morpho",
                 "liquidation_maker",
                 "oracle_frontrun",
-                "sniper",
               ].map((k) => (
                 <option key={k} value={k}>
                   {k}
@@ -748,19 +745,6 @@ export default function Console() {
 
       </Section>
 
-      {/* Directional sniper — its own lane, its own contract, its own risk
-          envelope. Kept as a distinct section rather than a row inside the
-          risk panel because nothing about it shares the atomic path's
-          guarantees. See docs/SNIPER.md. */}
-      <Section
-        id="sniper"
-        title="Sniper — new-token portfolio"
-        subtitle="directional lane · holds positions · docs/SNIPER.md"
-        defaultOpen={false}
-      >
-        <SniperPanel />
-      </Section>
-
       {/* risk & strategy controls */}
       <Section id="risk" title="Risk & strategy controls" subtitle="applies instantly — no restart">
         <RiskPanel killSwitchTripped={status?.risk.killSwitchTripped} />
@@ -770,7 +754,7 @@ export default function Console() {
       <Section
         id="golive"
         title="Production go-live wizard · deploy & arm independently"
-        subtitle="five-card wallet, vault, funding, pre-flight & live controls · docs/GO_LIVE.md"
+        subtitle="five-card wallet, executor, funding, pre-flight & live controls · docs/GO_LIVE.md"
         defaultOpen={false}
       >
         <div style={{padding: 4, display: "grid", gap: 12}}>

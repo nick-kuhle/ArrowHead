@@ -115,7 +115,7 @@ the CTO-recommended baselines — tighten from data, not vibes):
 Strategy funnel check: the live-eligible lanes are `sandwich`, `sandwich_v3`,
 `atomic_arb`, and the four liquidation rows (`liquidation`,
 `liquidation_compound`, `liquidation_morpho`, `liquidation_maker`). `jit`,
-`sniper` and `oracle_frontrun` are shadow-only by design
+`oracle_frontrun` is shadow-only by design
 (`Strategy::shadow_only_reason` names the reason for each). Live-eligible
 means the row *may* earn a `PASS`; it still has to. `DECODE_UNIVERSAL_ROUTER`
 stays `false` — that decision is made and recorded in `W6_MEMO.md`.
@@ -237,15 +237,8 @@ BASE_WS_URL=wss://<your-base-ws>
 # optional preconfirmation stream (requires a Flashblocks-integrated provider)
 # FLASHBLOCKS_WS_URL=wss://<your-base-flashblocks-endpoint>
 
-# Sniper on Base: simulation needs nothing but the fork; live additionally
-# needs the Base deployment of SniperVault (constructor WETH =
-# 0x4200000000000000000000000000000000000006 — never the mainnet WETH).
-SNIPER_MODE=simulation
-SNIPER_LIVE_ENABLED=false
 ```
 
 Run it exactly like the mainnet process (`make bot-run`), and point a second
 console chain entry at its API port. The console's chain switcher re-keys
 every panel, so Ethereum and Base portfolios can never bleed into each other.
-The sniper simulation fixture on Base binds Base WETH automatically from the
-chain profile.

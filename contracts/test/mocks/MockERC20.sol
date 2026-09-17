@@ -11,7 +11,7 @@ contract MockERC20 {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
-    /// Honeypot modelling for the sniper simulation fixture: transfers *from*
+    /// Honeypot modelling for simulation fixtures: transfers *from*
     /// a blocked address revert (the vault trying to sell), while transfers
     /// *to* it still succeed (the pair paying out the buy). Off by default, so
     /// every existing test keeps its semantics.
