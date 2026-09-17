@@ -506,11 +506,6 @@ pub struct Config {
     pub endpoints: Endpoints,
     pub risk: RiskConfig,
     pub strategies: StrategyToggles,
-    /// The sniper's own simulation/live boot envelope (`SNIPER_MODE` +
-    /// `SNIPER_LIVE_ENABLED`) — independent of the atomic engine's
-    /// `LIVE_EXECUTION`. Simulation needs no live arming at all; live needs
-    /// this ceiling plus its runtime gates.
-    pub sniper_mode: crate::sniper::SniperModeBoot,
     /// Priority fee (wei) the bot bids on its own transactions.
     ///
     /// Mainnet (`SubmissionMode::Bundle`) it is the simulated leg's fee —
@@ -769,19 +764,10 @@ pub struct Endpoints {
     /// This is deliberately distinct from the unfunded Flashbots reputation key.
     #[serde(skip_serializing, default)]
     pub searcher_private_key: Option<String>,
-    /// Optional, independently funded key for the directional SniperVault
-    /// lane. It is never used by MevExecutor or the raw cancellation lane.
-    #[serde(skip_serializing, default)]
-    pub sniper_searcher_private_key: Option<String>,
     /// Executor contract address, if deployed.
     pub executor: Option<Address>,
     /// Address the atomic engine signs from.
     pub searcher_address: Address,
-    /// Address the directional lane signs from. Defaults to the atomic
-    /// searcher address when no dedicated key is configured, preserving the
-    /// simulation-only legacy behaviour; live sniper execution requires the
-    /// dedicated key in `Config::validate`.
-    pub sniper_searcher_address: Address,
 }
 
 /// Hand-written so the signer key is redacted.
@@ -811,16 +797,8 @@ impl std::fmt::Debug for Endpoints {
                 "searcher_private_key",
                 &self.searcher_private_key.as_ref().map(|_| "<redacted>"),
             )
-            .field(
-                "sniper_searcher_private_key",
-                &self
-                    .sniper_searcher_private_key
-                    .as_ref()
-                    .map(|_| "<redacted>"),
-            )
             .field("executor", &self.executor)
             .field("searcher_address", &self.searcher_address)
-            .field("sniper_searcher_address", &self.sniper_searcher_address)
             .finish()
     }
 }
@@ -865,7 +843,6 @@ pub struct StrategyToggles {
     pub liquidation_maker: bool,
     /// Back-run oracle updates with near-miss liquidations.
     pub oracle_frontrun: bool,
-    pub sniper: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1196,47 +1173,6 @@ impl Config {
             }
         }
 
-        // The directional lane may use a separate funded EOA. Falling back to
-        // the atomic searcher address keeps shadow-mode and existing single-key
-        // deployments compatible, but a live sniper lane is rejected unless a
-        // dedicated private key is present (see `validate`).
-        let sniper_searcher_private_key = env_opt("SNIPER_SEARCHER_PRIVATE_KEY");
-        let sniper_signer = match sniper_searcher_private_key.as_deref() {
-            Some(key) => Some(
-                crate::signer::Signer::from_hex(key)
-                    .context("SNIPER_SEARCHER_PRIVATE_KEY is not a valid secp256k1 private key")?,
-            ),
-            None => None,
-        };
-        let configured_sniper_address = env_opt("SNIPER_SEARCHER_ADDRESS")
-            .map(|raw| {
-                raw.parse::<Address>().with_context(|| {
-                    format!("SNIPER_SEARCHER_ADDRESS is not a valid EVM address: {raw:?}")
-                })
-            })
-            .transpose()?;
-        if let (Some(signer), Some(configured)) = (&sniper_signer, configured_sniper_address) {
-            if signer.address() != configured {
-                anyhow::bail!(
-                    "SNIPER_SEARCHER_ADDRESS ({configured:?}) does not match the address derived from SNIPER_SEARCHER_PRIVATE_KEY ({:?})",
-                    signer.address()
-                );
-            }
-        }
-        let sniper_searcher_address = configured_sniper_address
-            .or_else(|| sniper_signer.as_ref().map(crate::signer::Signer::address))
-            .unwrap_or(searcher_address);
-
-        // The sniper's independent mode envelope. Fail closed at boot on a
-        // bad combination rather than silently downgrading: an operator who
-        // typed SNIPER_MODE=live must see exactly which gate refused it.
-        let sniper_mode = crate::sniper::SniperModeBoot::from_env_parts(
-            env_opt("SNIPER_MODE").as_deref(),
-            env_bool("SNIPER_LIVE_ENABLED", false),
-            sniper_searcher_private_key.is_some(),
-        )
-        .map_err(|errs| anyhow::anyhow!("sniper mode: {}", errs.join("; ")))?;
-
         let relay_url = env_or("FLASHBOTS_RELAY_URL", "https://relay.flashbots.net");
         let bundle_relay_urls = {
             let configured = env_list("BUNDLE_RELAY_URLS");
@@ -1313,10 +1249,8 @@ impl Config {
                 mev_blocker_ws: env_opt("MEV_BLOCKER_WS"),
                 flashbots_signer_key: env_opt("FLASHBOTS_SIGNER_KEY"),
                 searcher_private_key,
-                sniper_searcher_private_key,
                 executor: env_opt("EXECUTOR_ADDRESS").and_then(|v| v.parse().ok()),
                 searcher_address,
-                sniper_searcher_address,
             },
             risk: RiskConfig {
                 // Liberal defaults: record anything at all that is net positive.
@@ -1359,9 +1293,7 @@ impl Config {
                 liquidation_morpho: env_bool("STRATEGY_LIQUIDATION_MORPHO", true),
                 liquidation_maker: env_bool("STRATEGY_LIQUIDATION_MAKER", true),
                 oracle_frontrun: env_bool("STRATEGY_ORACLE_FRONTRUN", true),
-                sniper: env_bool("STRATEGY_SNIPER", true),
             },
-            sniper_mode,
             sim: SimConfig {
                 anvil_bin: env_or("ANVIL_BIN", "anvil"),
                 anvil_port: env_u64("ANVIL_PORT", 8548) as u16,
@@ -1546,36 +1478,6 @@ impl Config {
             if self.endpoints.executor.is_none() {
                 anyhow::bail!("live execution was armed without EXECUTOR_ADDRESS");
             }
-        }
-        // A non-zero, enabled directional lane is its own live money path.
-        // Requiring a dedicated key prevents a configuration that appears
-        // armed in the console while sharing the atomic key or having no
-        // signer at all. Shadow mode remains usable with zero size/budget.
-        let sniper_live_intent = self.live_execution
-            && env_bool("SNIPER_DIRECTIONAL", false)
-            && !env_u256("SNIPER_BUY_SIZE_WEI", 0).is_zero()
-            && !env_u256("SNIPER_DAILY_BUDGET_WEI", 0).is_zero();
-        if sniper_live_intent && self.endpoints.sniper_searcher_private_key.is_none() {
-            anyhow::bail!(
-                "SNIPER_DIRECTIONAL is enabled with a non-zero buy size and budget but SNIPER_SEARCHER_PRIVATE_KEY is unset; configure a dedicated sniper key"
-            );
-        }
-        if sniper_live_intent
-            && self.endpoints.sniper_searcher_address == self.endpoints.searcher_address
-        {
-            anyhow::bail!(
-                "SNIPER_SEARCHER_PRIVATE_KEY derives the same address as SEARCHER_PRIVATE_KEY; use separate keys for the atomic and directional nonce/risk domains"
-            );
-        }
-        // The sniper mode envelope must be internally consistent — a live
-        // mode without the ceiling or the key is refused here, not at the
-        // first trade attempt.
-        if let Err(errs) = crate::sniper::SniperModeBoot::from_env_parts(
-            env_opt("SNIPER_MODE").as_deref(),
-            env_bool("SNIPER_LIVE_ENABLED", false),
-            self.endpoints.sniper_searcher_private_key.is_some(),
-        ) {
-            anyhow::bail!("sniper mode: {}", errs.join("; "));
         }
         Ok(())
     }
@@ -1777,9 +1679,6 @@ impl StrategyToggles {
         if self.oracle_frontrun {
             v.push("oracle_frontrun");
         }
-        if self.sniper {
-            v.push("sniper");
-        }
         v
     }
 }
@@ -1859,10 +1758,8 @@ mod tests {
             mev_blocker_ws: None,
             flashbots_signer_key: Some("0xdeadbeefsupersecretkeymaterial".into()),
             searcher_private_key: None,
-            sniper_searcher_private_key: None,
             executor: None,
             searcher_address: Address::ZERO,
-            sniper_searcher_address: Address::ZERO,
         };
         let rendered = format!("{e:?}");
         assert!(
@@ -1888,10 +1785,8 @@ mod tests {
             mev_blocker_ws: None,
             flashbots_signer_key: Some("0xdeadbeefsupersecretkeymaterial".into()),
             searcher_private_key: None,
-            sniper_searcher_private_key: None,
             executor: None,
             searcher_address: Address::ZERO,
-            sniper_searcher_address: Address::ZERO,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(!json.contains("supersecret"), "signer key leaked: {json}");
@@ -2146,7 +2041,6 @@ mod tests {
             liquidation_morpho: true,
             liquidation_maker: true,
             oracle_frontrun: true,
-            sniper: true,
         };
         let warnings = coherence_warnings_for(&base, &s, true, false, true);
         let text = warnings.join("\n");
@@ -2198,7 +2092,6 @@ mod tests {
             liquidation_morpho: true,
             liquidation_maker: true,
             oracle_frontrun: true,
-            sniper: true,
         };
         assert!(
             coherence_warnings_for(&e, &s, true, false, false).is_empty(),

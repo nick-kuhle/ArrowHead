@@ -154,7 +154,7 @@ pub fn compare(
         let bribe = s.bribe_wei.parse::<U256>().unwrap_or(U256::ZERO);
         let rank = Competition::rank(bribe, winning);
         let victim_landed = if s.victims.is_empty() {
-            // No victim (arb / liquidation / sniper): the "landed" question
+            // No victim (arb / liquidation): the "landed" question
             // does not apply. Treat as landed so a successful sim counts as a
             // true positive against the block that actually got built.
             true

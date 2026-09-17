@@ -365,10 +365,8 @@ mod tests {
                 mev_blocker_ws: None,
                 flashbots_signer_key: None,
                 searcher_private_key: None,
-                sniper_searcher_private_key: None,
                 executor: None,
                 searcher_address: Address::with_last_byte(0x42),
-                sniper_searcher_address: Address::ZERO,
             },
             risk: crate::config::RiskConfig {
                 min_net_profit_wei: U256::from(1u8),
@@ -390,7 +388,6 @@ mod tests {
                 liquidation_morpho: false,
                 liquidation_maker: false,
                 oracle_frontrun: false,
-                sniper: false,
             },
             sim: crate::config::SimConfig {
                 anvil_bin: "anvil".into(),
@@ -402,7 +399,6 @@ mod tests {
                 target_block_offset: 1,
                 timeout: std::time::Duration::from_millis(1_000),
             },
-            sniper_mode: crate::sniper::SniperModeBoot::default(),
             liquidation: crate::config::LiquidationConfig {
                 watch_cap: 8,
                 morpho_market_cap: 4,

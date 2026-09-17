@@ -41,7 +41,7 @@ use crate::strategies::{
 use crate::types::BlockHead;
 
 /// Minimum WETH liquidity (wei) before a discovered pool enters the cache —
-/// 0.5 WETH, mirroring the sniper's dust gate. Evaluated at runtime in
+/// 0.5 WETH, the shared dust gate. Evaluated at runtime in
 /// `discover` (U256 can't be built from a literal in a `const` on this alloy
 /// version).
 const MIN_WETH_RESERVE: u128 = 500_000_000_000_000_000;

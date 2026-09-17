@@ -11,7 +11,6 @@ pub mod liquidation_morpho;
 pub mod oracle_frontrun;
 pub mod sandwich;
 pub mod sandwich_v3;
-pub mod sniper;
 
 use std::collections::HashMap;
 use std::sync::Arc;

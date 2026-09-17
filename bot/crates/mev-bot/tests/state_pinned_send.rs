@@ -199,10 +199,8 @@ fn box_config() -> Config {
             mev_blocker_ws: None,
             flashbots_signer_key: None,
             searcher_private_key: None,
-            sniper_searcher_private_key: None,
             executor: None,
             searcher_address: Signer::simulation().address(),
-            sniper_searcher_address: Address::ZERO,
         },
         risk: mev_bot::config::RiskConfig {
             min_net_profit_wei: U256::ZERO,
@@ -224,7 +222,6 @@ fn box_config() -> Config {
             liquidation_morpho: false,
             liquidation_maker: false,
             oracle_frontrun: false,
-            sniper: false,
         },
         sim: mev_bot::config::SimConfig {
             anvil_bin: "anvil".into(),
@@ -236,7 +233,6 @@ fn box_config() -> Config {
             target_block_offset: 1,
             timeout: std::time::Duration::from_millis(5_000),
         },
-        sniper_mode: mev_bot::sniper::SniperModeBoot::default(),
         liquidation: mev_bot::config::LiquidationConfig {
             watch_cap: 8,
             morpho_market_cap: 4,

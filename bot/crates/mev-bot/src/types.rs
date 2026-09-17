@@ -309,7 +309,6 @@ pub enum Strategy {
     /// Back-run of a collateral price-feed update with liquidations of
     /// near-miss positions (the oracle-update front-run).
     OracleFrontrun,
-    Sniper,
 }
 
 impl Strategy {
@@ -324,7 +323,6 @@ impl Strategy {
             Strategy::LiquidationMorpho => "liquidation_morpho",
             Strategy::LiquidationMaker => "liquidation_maker",
             Strategy::OracleFrontrun => "oracle_frontrun",
-            Strategy::Sniper => "sniper",
         }
     }
 
@@ -362,9 +360,6 @@ impl Strategy {
     pub fn shadow_only_reason(&self) -> Option<&'static str> {
         match self {
             Strategy::Jit => Some("position is not yet unwound to one profit token"),
-            Strategy::Sniper => {
-                Some("round-trip probe is not a certified profitable execution strategy")
-            }
             // Accounting is no longer the blocker here; position is. Landing an
             // oracle front-run requires being ordered ahead of a known update
             // in the same block, which needs either a builder market (mainnet)
@@ -378,7 +373,7 @@ impl Strategy {
         }
     }
 
-    pub fn all() -> [Strategy; 10] {
+    pub fn all() -> [Strategy; 9] {
         [
             Strategy::Sandwich,
             Strategy::SandwichV3,
@@ -389,7 +384,6 @@ impl Strategy {
             Strategy::LiquidationMorpho,
             Strategy::LiquidationMaker,
             Strategy::OracleFrontrun,
-            Strategy::Sniper,
         ]
     }
 }
@@ -840,7 +834,7 @@ mod tests {
         // The funnel distinguishes V2 from V3 sandwiches by variant. Dropping
         // SandwichV3 from `all()` would hide it from /api/status.strategies
         // and from the dashboard even when the toggle is on.
-        assert_eq!(Strategy::all().len(), 10);
+        assert_eq!(Strategy::all().len(), 9);
         assert_eq!(Strategy::SandwichV3.as_str(), "sandwich_v3");
         assert!(Strategy::all().contains(&Strategy::SandwichV3));
     }

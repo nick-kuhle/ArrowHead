@@ -52,8 +52,8 @@ pub struct AnvilSim {
     forked_at: Mutex<u64>,
     executor: parking_lot::RwLock<Address>,
     searcher: Address,
-    /// Serialises access: one simulation at a time per fork. Shared with the
-    /// sniper simulation fixture so its fixture transactions can never land
+    /// Serialises access: one simulation at a time per fork. A fixture
+    /// transaction holding this lock cannot interleave
     /// inside a bundle replay's snapshot/revert window (and never race the
     /// automine-off phase).
     lock: Arc<Mutex<()>>,
@@ -384,15 +384,15 @@ impl AnvilSim {
         *self.executor.read()
     }
 
-    /// The fork's serialization lock, shared with the sniper simulation
-    /// fixture. A fixture transaction holding this lock cannot interleave
+    /// The fork's serialization lock, used by contract-backed simulation
+    /// fixtures. A fixture transaction holding this lock cannot interleave
     /// with a bundle simulation's snapshot/mine/revert cycle, and vice versa.
     pub fn sim_lock(&self) -> Arc<Mutex<()>> {
         self.lock.clone()
     }
 
-    /// The fork's RPC transport. The sniper simulation fixture reuses the
-    /// same anvil process rather than spawning a fork per click.
+    /// The fork's RPC transport. Contract-backed simulation fixtures reuse
+    /// the same anvil process rather than spawning a fork per click.
     pub fn rpc(&self) -> &RpcClient {
         &self.rpc
     }

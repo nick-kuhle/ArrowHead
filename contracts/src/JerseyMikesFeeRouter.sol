@@ -4,8 +4,8 @@ pragma solidity ^0.8.26;
 /// @title JerseyMikesFeeRouter
 /// @notice Atomic 1% fee wrapper for the dashboard's manual V2 trades.
 ///
-/// This contract is intentionally separate from MevExecutor and SniperVault.
-/// It is not used by either automated lane. It holds no standing trading
+/// This contract is intentionally separate from MevExecutor.
+/// It is not used by the automated lanes. It holds no standing trading
 /// inventory: each call pulls/receives the user's input, pays the fee, invokes
 /// an owner-approved router, and leaves the swap output to the recipient
 /// encoded in the router calldata.

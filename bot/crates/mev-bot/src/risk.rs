@@ -105,7 +105,6 @@ impl RuntimeRisk {
             Strategy::LiquidationMorpho => (t.liquidation_morpho, b.liquidation_morpho),
             Strategy::LiquidationMaker => (t.liquidation_maker, b.liquidation_maker),
             Strategy::OracleFrontrun => (t.oracle_frontrun, b.oracle_frontrun),
-            Strategy::Sniper => (t.sniper, b.sniper),
         };
         rt && bt
     }
@@ -188,7 +187,6 @@ impl RuntimeRisk {
                     Strategy::LiquidationMorpho => strategies.liquidation_morpho = *on,
                     Strategy::LiquidationMaker => strategies.liquidation_maker = *on,
                     Strategy::OracleFrontrun => strategies.oracle_frontrun = *on,
-                    Strategy::Sniper => strategies.sniper = *on,
                 }
             }
         }
@@ -209,7 +207,6 @@ impl RuntimeRisk {
             Strategy::LiquidationMorpho => b.liquidation_morpho,
             Strategy::LiquidationMaker => b.liquidation_maker,
             Strategy::OracleFrontrun => b.oracle_frontrun,
-            Strategy::Sniper => b.sniper,
         }
     }
 }
@@ -437,10 +434,8 @@ mod tests {
                 mev_blocker_ws: None,
                 flashbots_signer_key: None,
                 searcher_private_key: None,
-                sniper_searcher_private_key: None,
                 executor: None,
                 searcher_address: Address::ZERO,
-                sniper_searcher_address: Address::ZERO,
             },
             risk: crate::config::RiskConfig {
                 min_net_profit_wei: U256::from(1u8),
@@ -462,9 +457,7 @@ mod tests {
                 liquidation_morpho: false,
                 liquidation_maker: false,
                 oracle_frontrun: false,
-                sniper: true,
             },
-            sniper_mode: crate::sniper::SniperModeBoot::default(),
             sim: crate::config::SimConfig {
                 anvil_bin: "anvil".into(),
                 anvil_port: 8548,
@@ -679,10 +672,9 @@ mod tests {
 
     fn runtime() -> crate::risk::RuntimeRisk {
         let c = cfg();
-        // Boot: everything on except jit and sniper (to exercise narrowing).
+        // Boot: everything on except jit (to exercise narrowing).
         let mut toggles = c.strategies.clone();
         toggles.jit = false;
-        toggles.sniper = false;
         crate::risk::RuntimeRisk::new(c.risk.clone(), toggles)
     }
 
@@ -744,7 +736,7 @@ mod tests {
 
     #[test]
     fn runtime_strategy_toggles_can_only_narrow() {
-        let rt = runtime(); // jit + sniper off at boot
+        let rt = runtime(); // jit off at boot
         let mut off = std::collections::HashMap::new();
         off.insert("sandwich".to_string(), false);
         rt.apply(crate::risk::RiskPatch {

@@ -141,7 +141,7 @@ mod tests {
     fn funnel_maps_render_with_lane_and_strategy_labels() {
         let v = json!({
             "sandwich": {"candidatesEmitted": 10, "submittable": 2},
-            "sniper": {"candidatesEmitted": 5, "submittable": 0},
+            "jit": {"candidatesEmitted": 5, "submittable": 0},
         });
         let text = render_funnel(&v, "mev_funnel", "live");
         assert!(
@@ -149,7 +149,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("mev_funnel_candidates_emitted{lane=\"live\",strategy=\"sniper\"} 5\n"),
+            text.contains("mev_funnel_candidates_emitted{lane=\"live\",strategy=\"jit\"} 5\n"),
             "{text}"
         );
     }

@@ -12,7 +12,7 @@ import {IERC20, IWETH, IBalancerVault, IFlashLoanRecipient} from "./interfaces/I
 ///    (address(0) == native ETH), pay any builder share, and revert unless the retained
 ///    delta is >= `minProfit`. Private bundle simulation should exclude a reverting batch;
 ///    partial inclusion is still treated as an operational incident by the off-chain bot.
-/// 2. **Generic.** Strategies (sandwich, JIT, atomic arb, liquidation, sniper) are encoded
+/// 2. **Generic.** Strategies (sandwich, JIT, atomic arb, liquidation) are encoded
 ///    off-chain as an ordered array of `Call`s. No strategy-specific on-chain logic means
 ///    no redeploy when a strategy changes.
 /// 3. **Cheap.** Tight calldata, transient-storage guards (EIP-1153), no SafeERC20 bloat.

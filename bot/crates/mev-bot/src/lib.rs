@@ -9,8 +9,7 @@
 //!  MEV-Share├─ ingest ─→ strategies ─→ risk ─→ simulate ─→ store ─→ HTTP/SSE ─→ dashboard
 //!  heads    │            (sandwich,           (anvil fork
 //!  relays  ─┘             jit, arb,            + eth_callBundle)
-//!                         liquidation,
-//!                         sniper)
+//!                         liquidation)
 //! ```
 //!
 //! Relay submission is fail-closed behind independent boot arming, broadcast
@@ -37,10 +36,6 @@ pub mod rlp;
 pub mod rpc;
 pub mod signer;
 pub mod sim;
-/// The directional new-token sniper lane. Deliberately isolated from the
-/// atomic profit-or-revert engine above — see `sniper/mod.rs` and
-/// `docs/SNIPER.md` for why.
-pub mod sniper;
 pub mod state_comparisons;
 pub mod store;
 pub mod strategies;
