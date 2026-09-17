@@ -71,6 +71,52 @@ pub struct ActualMevMatch {
     pub evidence: serde_json::Value,
 }
 
+/// One CoW order the bot placed itself (row in `cow_orders`). Amounts stay
+/// decimal strings so their raw form round-trips into the API unchanged.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CowOrderRow {
+    pub uid: String,
+    pub chain_id: u64,
+    pub sell_token: String,
+    pub buy_token: String,
+    pub sell_amount: String,
+    pub buy_amount: String,
+    pub fee_amount: String,
+    pub valid_to: u64,
+    pub kind: String,
+    pub partially_fillable: bool,
+    pub receiver: String,
+    pub app_data: String,
+    pub full_app_data: Option<String>,
+    pub quote_id: Option<i64>,
+    pub signing_scheme: String,
+    pub signature: String,
+    pub status: String,
+    pub executed_sell_amount: String,
+    pub executed_buy_amount: String,
+    pub executed_fee_amount: String,
+    pub invalidated: bool,
+    pub reason: Option<String>,
+    pub placed_by: String,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    pub filled_at_ms: Option<u64>,
+}
+
+/// Field-wise refresh of a placed CoW order from a status poll.
+#[derive(Clone, Debug, Default)]
+pub struct CowOrderUpdate {
+    pub uid: String,
+    pub status: Option<String>,
+    pub executed_sell_amount: Option<String>,
+    pub executed_buy_amount: Option<String>,
+    pub executed_fee_amount: Option<String>,
+    pub invalidated: Option<bool>,
+    pub reason: Option<String>,
+    pub filled_at_ms: Option<u64>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct QualificationEvidence {
     pub fork_samples: u64,
@@ -183,7 +229,7 @@ impl Store {
               created_at_ms, updated_at_ms)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'validated_shadow_only',?12,?12)",
             params![
-                format!("{:#x}", validated.uid),
+                validated.uid.to_string(),
                 format!("{:#x}", validated.digest),
                 chain_id as i64,
                 format!("{:#x}", settlement),
@@ -198,6 +244,136 @@ impl Store {
             ],
         )?;
         Ok(changed == 1)
+    }
+
+    /// Durably upsert an order this bot placed (uid-keyed; re-placing the same
+    /// uid replaces the row, so reconciliation is idempotent).
+    pub fn record_cow_order(&self, row: &CowOrderRow) -> Result<()> {
+        self.conn.lock().execute(
+            "INSERT OR REPLACE INTO cow_orders
+             (uid, chain_id, sell_token, buy_token, sell_amount, buy_amount,
+              fee_amount, valid_to, kind, partially_fillable, receiver, app_data,
+              full_app_data, quote_id, signing_scheme, signature, status,
+              executed_sell_amount, executed_buy_amount, executed_fee_amount,
+              invalidated, reason, placed_by, created_at_ms, updated_at_ms, filled_at_ms)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,
+                     ?18,?19,?20,?21,?22,?23,?24,?24,?25)",
+            params![
+                row.uid,
+                row.chain_id as i64,
+                row.sell_token,
+                row.buy_token,
+                row.sell_amount,
+                row.buy_amount,
+                row.fee_amount,
+                row.valid_to as i64,
+                row.kind,
+                row.partially_fillable,
+                row.receiver,
+                row.app_data,
+                row.full_app_data,
+                row.quote_id,
+                row.signing_scheme,
+                row.signature,
+                row.status,
+                row.executed_sell_amount,
+                row.executed_buy_amount,
+                row.executed_fee_amount,
+                row.invalidated,
+                row.reason,
+                row.placed_by,
+                row.created_at_ms as i64,
+                row.filled_at_ms.map(|v| v as i64),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Apply a status-poll result to a placed order. Sets `updated_at_ms` on
+    /// every call so the row is a reliable recency cursor.
+    pub fn update_cow_order(&self, update: &CowOrderUpdate) -> Result<()> {
+        let now = now_ms() as i64;
+        let conn = self.conn.lock();
+        if let Some(status) = &update.status {
+            conn.execute(
+                "UPDATE cow_orders SET status=?2, updated_at_ms=?3 WHERE uid=?1",
+                params![update.uid, status, now],
+            )?;
+        }
+        for (column, value) in [
+            ("executed_sell_amount", &update.executed_sell_amount),
+            ("executed_buy_amount", &update.executed_buy_amount),
+            ("executed_fee_amount", &update.executed_fee_amount),
+            ("reason", &update.reason),
+        ] {
+            if let Some(value) = value {
+                conn.execute(
+                    &format!(
+                        "UPDATE cow_orders SET {column}=?2, updated_at_ms=?3 WHERE uid=?1"
+                    ),
+                    params![update.uid, value, now],
+                )?;
+            }
+        }
+        if let Some(invalidated) = update.invalidated {
+            conn.execute(
+                "UPDATE cow_orders SET invalidated=?2, updated_at_ms=?3 WHERE uid=?1",
+                params![update.uid, invalidated, now],
+            )?;
+        }
+        if let Some(filled_at) = update.filled_at_ms {
+            conn.execute(
+                "UPDATE cow_orders SET filled_at_ms=?2, updated_at_ms=?3 WHERE uid=?1",
+                params![update.uid, filled_at as i64, now],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// All orders this bot placed, newest first.
+    pub fn cow_orders(&self) -> Result<Vec<CowOrderRow>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT uid, chain_id, sell_token, buy_token, sell_amount, buy_amount,
+                    fee_amount, valid_to, kind, partially_fillable, receiver, app_data,
+                    full_app_data, quote_id, signing_scheme, signature, status,
+                    executed_sell_amount, executed_buy_amount, executed_fee_amount,
+                    invalidated, reason, placed_by, created_at_ms, updated_at_ms, filled_at_ms
+             FROM cow_orders ORDER BY created_at_ms DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(CowOrderRow {
+                    uid: row.get(0)?,
+                    chain_id: row.get::<_, i64>(1)? as u64,
+                    sell_token: row.get(2)?,
+                    buy_token: row.get(3)?,
+                    sell_amount: row.get(4)?,
+                    buy_amount: row.get(5)?,
+                    fee_amount: row.get(6)?,
+                    valid_to: row.get::<_, i64>(7)? as u64,
+                    kind: row.get(8)?,
+                    partially_fillable: row.get::<_, bool>(9)?,
+                    receiver: row.get(10)?,
+                    app_data: row.get(11)?,
+                    full_app_data: row.get(12)?,
+                    quote_id: row.get(13)?,
+                    signing_scheme: row.get(14)?,
+                    signature: row.get(15)?,
+                    status: row.get(16)?,
+                    executed_sell_amount: row.get(17)?,
+                    executed_buy_amount: row.get(18)?,
+                    executed_fee_amount: row.get(19)?,
+                    invalidated: row.get::<_, bool>(20)?,
+                    reason: row.get(21)?,
+                    placed_by: row.get(22)?,
+                    created_at_ms: row.get::<_, i64>(23)? as u64,
+                    updated_at_ms: row.get::<_, i64>(24)? as u64,
+                    filled_at_ms: row.get::<_, Option<i64>>(25)?.map(|v| v as u64),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     fn migrate(&self) -> Result<()> {
@@ -428,6 +604,40 @@ impl Store {
             );
             CREATE INDEX IF NOT EXISTS idx_cow_intents_status
                 ON cow_intents(status, valid_to);
+
+            -- Orders this bot itself placed with the Order Book API. Unlike
+            -- `cow_intents` (third-party shadow orders), these are live,
+            -- signed orders the bot owns and must reconcile until terminal.
+            CREATE TABLE IF NOT EXISTS cow_orders (
+                uid                TEXT PRIMARY KEY,
+                chain_id           INTEGER NOT NULL,
+                sell_token         TEXT NOT NULL,
+                buy_token          TEXT NOT NULL,
+                sell_amount        TEXT NOT NULL,
+                buy_amount         TEXT NOT NULL,
+                fee_amount         TEXT NOT NULL DEFAULT '0',
+                valid_to           INTEGER NOT NULL,
+                kind               TEXT NOT NULL,
+                partially_fillable INTEGER NOT NULL DEFAULT 0,
+                receiver           TEXT NOT NULL DEFAULT '',
+                app_data           TEXT NOT NULL DEFAULT '',
+                full_app_data      TEXT,
+                quote_id           INTEGER,
+                signing_scheme     TEXT NOT NULL DEFAULT 'eip712',
+                signature          TEXT NOT NULL,
+                status             TEXT NOT NULL DEFAULT 'open',
+                executed_sell_amount TEXT NOT NULL DEFAULT '0',
+                executed_buy_amount  TEXT NOT NULL DEFAULT '0',
+                executed_fee_amount  TEXT NOT NULL DEFAULT '0',
+                invalidated        INTEGER NOT NULL DEFAULT 0,
+                reason             TEXT,
+                placed_by          TEXT NOT NULL DEFAULT 'api',
+                created_at_ms      INTEGER NOT NULL,
+                updated_at_ms      INTEGER NOT NULL,
+                filled_at_ms       INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_cow_orders_status
+                ON cow_orders(status, valid_to);
 
             -- Sequencer-backend qualification evidence: for a victim-pinned
             -- opportunity, the fork's predicted victim-leg delta vs the

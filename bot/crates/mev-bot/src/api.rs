@@ -34,10 +34,12 @@ pub struct ApiState {
     pub cow_intents_enabled: bool,
     pub cow_settlement: Option<Address>,
     pub cow_max_validity_secs: u64,
+    pub cow_trader: Option<Arc<crate::cow_trade::CowTrader>>,
 }
 
 pub fn router(engine: Arc<Engine>) -> Router {
     let cfg = engine.cfg.clone();
+    let cow_trader = engine.cow_trader.clone();
     let state = ApiState {
         engine,
         cow_intents_enabled: std::env::var("COW_INTENTS_ENABLED")
@@ -51,6 +53,7 @@ pub fn router(engine: Arc<Engine>) -> Router {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(900),
+        cow_trader,
     };
 
     // Mutating endpoints, split out so an auth layer can be applied to them
@@ -63,6 +66,8 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .route("/api/qualification", post(set_qualification))
         .route("/api/intents/validate", post(validate_cow_intent))
         .route("/api/intents/score", post(score_cow_intent_solution))
+        .route("/api/cow/order", post(place_cow_order))
+        .route("/api/cow/cancel", post(cancel_cow_order))
         .layer(middleware::from_fn_with_state(state.clone(), require_auth));
 
     // Browsers get no cross-origin access by default. The dashboard reaches
@@ -108,6 +113,7 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .route("/api/risk", get(risk_state))
         .route("/api/alerts", get(alerts))
         .route("/api/cow", get(cow_orderbook))
+        .route("/api/cow/orders", get(cow_orders))
         .route("/api/metrics", get(metrics))
         .merge(mutating)
         .layer(cors)
@@ -160,7 +166,7 @@ async fn validate_cow_intent(
                 Json(json!({
                     "ok": true,
                     "status": if inserted { "validated_shadow_only" } else { "duplicate_validated_shadow_only" },
-                    "uid": format!("{:#x}", validated.uid),
+                    "uid": validated.uid.to_string(),
                     "digest": format!("{:#x}", validated.digest),
                     "owner": format!("{:#x}", validated.owner),
                     "sellToken": format!("{:#x}", validated.sell_token),
@@ -310,7 +316,344 @@ async fn cow_orderbook(State(s): State<ApiState>) -> Json<serde_json::Value> {
         "snapshotAgeMs": (fetched_at_ms > 0).then(|| now_ms.saturating_sub(fetched_at_ms)),
         "error": error,
         "snapshot": base,
+        "trader": trader_block(&s),
     }))
+}
+
+/// Shape of the CoW placement subsystem for /api/cow; `None` renders as
+/// disabled. Kept additive so the read-only globe keeps working unchanged.
+fn trader_block(s: &ApiState) -> serde_json::Value {
+    let Some(trader) = &s.cow_trader else {
+        return json!({
+            "enabled": false,
+            "error": "order placement disabled (set COW_TRADER_ENABLED=true)"
+        });
+    };
+    let snap = trader.snapshot();
+    json!({
+        "enabled": true,
+        "baseUrl": trader.base_url(),
+        "chainId": trader.chain_id(),
+        "owner": snap.owner,
+        "settlement": format!("{:#x}", trader.settlement()).to_lowercase(),
+        "vaultRelayer": format!("{:#x}", trader.vault_relayer()).to_lowercase(),
+        "open": snap.open_orders,
+        "places": snap.places,
+        "cancels": snap.cancels,
+        "fills": snap.fills,
+        "lastPlaceAtMs": snap.last_place_at_ms,
+        "lastActionError": snap.last_action_error,
+        "lastActionErrorAtMs": snap.last_action_error_at_ms,
+    })
+}
+
+/// All known CoW orders: the in-memory open set plus the durable history so
+/// the dashboard shows the sequence across restarts.
+async fn cow_orders(State(s): State<ApiState>) -> Json<serde_json::Value> {
+    let Some(trader) = &s.cow_trader else {
+        return Json(json!({
+            "ok": true,
+            "enabled": false,
+            "open": [],
+            "history": [],
+            "error": "order placement disabled (set COW_TRADER_ENABLED=true)"
+        }));
+    };
+    let snap = trader.snapshot();
+    let history: Vec<serde_json::Value> = match s.engine.store.cow_orders() {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|r| {
+                json!({
+                    "uid": r.uid,
+                    "chainId": r.chain_id,
+                    "sellToken": r.sell_token,
+                    "buyToken": r.buy_token,
+                    "sellAmount": r.sell_amount,
+                    "buyAmount": r.buy_amount,
+                    "feeAmount": r.fee_amount,
+                    "validTo": r.valid_to,
+                    "kind": r.kind,
+                    "partiallyFillable": r.partially_fillable,
+                    "receiver": r.receiver,
+                    "appData": r.app_data,
+                    "quoteId": r.quote_id,
+                    "status": r.status,
+                    "executedSellAmount": r.executed_sell_amount,
+                    "executedBuyAmount": r.executed_buy_amount,
+                    "executedFeeAmount": r.executed_fee_amount,
+                    "invalidated": r.invalidated,
+                    "reason": r.reason,
+                    "placedBy": r.placed_by,
+                    "createdAtMs": r.created_at_ms,
+                    "updatedAtMs": r.updated_at_ms,
+                    "filledAtMs": r.filled_at_ms,
+                })
+            })
+            .collect(),
+        Err(error) => {
+            tracing::warn!(target: "api", error = %error, "cow_orders: history read failed");
+            vec![json!({ "error": "history unavailable" })]
+        }
+    };
+    Json(json!({
+        "ok": true,
+        "enabled": true,
+        "owner": snap.owner,
+        "places": snap.places,
+        "cancels": snap.cancels,
+        "fills": snap.fills,
+        "lastPlaceAtMs": snap.last_place_at_ms,
+        "lastActionError": snap.last_action_error,
+        "lastActionErrorAtMs": snap.last_action_error_at_ms,
+        "open": snap.open_orders,
+        "history": history,
+    }))
+}
+
+/// Body of `POST /api/cow/order`. Amounts are the exact wire values the order
+/// will be signed with: `sellAmount`/`buyAmount` are final, and `feeAmount` is
+/// what the order signs (a sell order's `buyAmount` is what you keep after
+/// fees, as the API quotes it). When `feeAmount` is omitted the bot quotes the
+/// order first and uses the returned fee + quoteId.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaceCowOrderRequest {
+    sell_token: String,
+    buy_token: String,
+    kind: String,
+    sell_amount: String,
+    buy_amount: String,
+    #[serde(default)]
+    fee_amount: Option<String>,
+    #[serde(default)]
+    valid_to: Option<u64>,
+    #[serde(default)]
+    partially_fillable: bool,
+    #[serde(default)]
+    full_app_data: Option<String>,
+}
+
+async fn place_cow_order(
+    State(s): State<ApiState>,
+    Json(req): Json<PlaceCowOrderRequest>,
+) -> Response {
+    use crate::cow::CowOrderKind;
+    let Some(trader) = &s.cow_trader else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "ok": false,
+                "error": "order placement disabled (set COW_TRADER_ENABLED=true)"
+            })),
+        )
+            .into_response();
+    };
+    let sell = match req.sell_token.trim().parse() {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "sellToken must be a hex address" })),
+            )
+                .into_response();
+        }
+    };
+    let buy = match req.buy_token.trim().parse() {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "buyToken must be a hex address" })),
+            )
+                .into_response();
+        }
+    };
+    if sell == buy {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "ok": false, "error": "sellToken and buyToken must differ" })),
+        )
+            .into_response();
+    }
+    let sell_amount: U256 = match req.sell_amount.trim().parse::<U256>() {
+        Ok(v) if !v.is_zero() => v,
+        _ => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "sellAmount must be a positive integer" })),
+            )
+                .into_response();
+        }
+    };
+    let buy_amount: U256 = match req.buy_amount.trim().parse::<U256>() {
+        Ok(v) if !v.is_zero() => v,
+        _ => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "buyAmount must be a positive integer" })),
+            )
+                .into_response();
+        }
+    };
+    let kind = match req.kind.to_ascii_lowercase().as_str() {
+        "sell" => CowOrderKind::Sell,
+        "buy" => CowOrderKind::Buy,
+        _ => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "kind must be \"sell\" or \"buy\"" })),
+            )
+                .into_response();
+        }
+    };
+    let now_s = crate::types::now_ms() / 1_000;
+    let cap = s.engine.cfg.cow.trader_max_validity_secs.max(60);
+    let valid_to = match req.valid_to {
+        Some(v) if v > now_s + 60 && v <= now_s + cap => v,
+        Some(_) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "ok": false,
+                    "error": format!("validTo must be within (now+60s, now+{cap}s)")
+                })),
+            )
+                .into_response();
+        }
+        None => now_s + cap,
+    };
+
+    // Optional fee: quote when omitted so the signed order carries the same
+    // numbers the Order Book would have quoted.
+    let (fee_amount, quote_id): (U256, Option<i64>) = match req.fee_amount.clone() {
+        Some(fee) => match fee.trim().parse() {
+            Ok(fee) => (fee, None),
+            Err(_) => {
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "ok": false, "error": "feeAmount must be an integer" })),
+                )
+                    .into_response();
+            }
+        },
+        None => match trader
+            .quote(
+                sell,
+                buy,
+                kind,
+                Some(sell_amount),
+                Some(buy_amount),
+                valid_to,
+            )
+            .await
+        {
+            Ok(quote) => match quote.quote.fee_amount.trim().parse() {
+                Ok(fee) => (fee, quote.id),
+                Err(_) => {
+                    return (
+                        StatusCode::BAD_GATEWAY,
+                        Json(json!({ "ok": false, "error": "quoted feeAmount was not numeric" })),
+                    )
+                        .into_response();
+                }
+            },
+            Err(error) => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(json!({ "ok": false, "error": format!("quote failed: {error}") })),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    let params = crate::cow_trade::PlaceParams {
+        sell_token: sell,
+        buy_token: buy,
+        kind,
+        sell_amount,
+        buy_amount,
+        fee_amount,
+        valid_to,
+        partially_fillable: req.partially_fillable,
+        quote_id,
+        full_app_data: req.full_app_data,
+        placed_by: "api".to_string(),
+    };
+    match trader.place(params).await {
+        Ok(uid) => (
+            StatusCode::CREATED,
+            Json(json!({
+                "ok": true,
+                "uid": uid.to_string(),
+                "validTo": valid_to,
+                "feeAmount": fee_amount.to_string(),
+                "quoteId": quote_id,
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "ok": false, "error": format!("order placement failed: {error}") })),
+        )
+            .into_response(),
+    }
+}
+
+async fn cancel_cow_order(State(s): State<ApiState>, Json(body): Json<serde_json::Value>) -> Response {
+    use std::str::FromStr;
+    let Some(trader) = &s.cow_trader else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "ok": false,
+                "error": "order placement disabled (set COW_TRADER_ENABLED=true)"
+            })),
+        )
+            .into_response();
+    };
+    let uid = match body.get("uid").and_then(|v| v.as_str()) {
+        Some(raw) => match crate::cow::OrderUid::from_str(raw.trim()) {
+            Ok(uid) => uid,
+            Err(_) => {
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "ok": false, "error": "uid must be a 56-byte hex string" })),
+                )
+                    .into_response();
+            }
+        },
+        None => {
+            // `all: true` cancels every order this bot owns (the kill-switch
+            // path and the paper-cut escape valve for a stuck peg).
+            if body.get("all").and_then(|v| v.as_bool()).unwrap_or(false) {
+                let n = trader.cancel_all().await;
+                return (
+                    StatusCode::OK,
+                    Json(json!({ "ok": true, "cancelled": n })),
+                )
+                    .into_response();
+            }
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "ok": false, "error": "body must carry \"uid\" (or \"all\": true)" })),
+            )
+                .into_response();
+        }
+    };
+    match trader.cancel(uid).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(json!({ "ok": true, "uid": uid.to_string() })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "ok": false, "error": format!("cancel failed: {error}") })),
+        )
+            .into_response(),
+    }
 }
 
 async fn status(State(s): State<ApiState>) -> impl IntoResponse {

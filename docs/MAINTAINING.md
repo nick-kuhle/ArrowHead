@@ -306,8 +306,15 @@ against a shrinking share of the flow.
   `EXTRA_MEMPOOL_WS` are the partial mitigations already in the
   config.
 - The long-term direction is **intent auctions**. ArrowHead now has the pure
-  native-CoW order digest/recovery boundary in `bot/crates/mev-bot/src/cow.rs`;
-  the authenticated auction adapter, optimizer, durable intent journal, and
+  native-CoW order digest/recovery boundary in `bot/crates/mev-bot/src/cow.rs`
+  plus a wire-exact placement client in `cow_trade.rs`: with
+  `COW_TRADER_ENABLED=true` an operator can sign, post, track and cancel real
+  EIP-712 CoW orders through `POST /api/cow/order` and `POST /api/cow/cancel`
+  (bearer-auth gated; signed with `SEARCHER_PRIVATE_KEY`), and the engine
+  reconciles each order to its terminal state and cancels everything on kill
+  switch. Orders settle via CoW solvers, never by this process, so the
+  "nothing executes on-chain from this bot for a CoW order" boundary holds.
+  The authenticated auction adapter, optimizer, durable intent journal, and
   settlement authorization remain gated work. See
   [`INTENT_SOLVER_2026.md`](INTENT_SOLVER_2026.md). Never treat a signed intent
   as permission to submit arbitrary executor calldata.

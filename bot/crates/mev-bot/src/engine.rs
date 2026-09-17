@@ -171,6 +171,12 @@ pub struct Engine {
     /// `COW_ORDERBOOK_ENABLED` is set and the chain has a realm (or
     /// `COW_ORDERBOOK_URL` provides one); served on `/api/cow`.
     pub cow_orderbook: Option<Arc<crate::cow_orderbook::CowOrderbookClient>>,
+    /// CoW order *placement* subsystem (sign/post/track/cancel). `Some` when
+    /// `COW_TRADER_ENABLED` is set and the chain has a realm (or
+    /// `COW_ORDERBOOK_URL` provides one). Served on `/api/cow` and driven by
+    /// the authed `POST /api/cow/order` / `/api/cow/cancel` endpoints plus the
+    /// kill-switch aware poller in [`Engine::spawn_cow_trader`].
+    pub cow_trader: Option<Arc<crate::cow_trade::CowTrader>>,
 }
 
 /// A delivered block waiting to be scored: the block and its transactions.
@@ -828,6 +834,71 @@ impl Engine {
             None
         };
 
+        // CoW order placement subsystem. Off by default — same "no
+        // unrequested writes" posture as the feed. Orders are EIP-712 signed
+        // with the searcher key (the identity that must hold an ERC20
+        // allowance for the bought pair) and posted to the Order Book API; the
+        // chain itself is never touched from here.
+        let cow_trader = if cfg.cow.trader_enabled {
+            let base = cfg
+                .cow
+                .orderbook_url
+                .clone()
+                .or_else(|| crate::cow_orderbook::orderbook_base_url(cfg.chain.chain_id));
+            match base {
+                Some(base) => {
+                    let signer = (*transaction_signer).clone();
+                    if signer.address() == crate::signer::Signer::simulation().address()
+                        && cfg.endpoints.searcher_private_key.is_none()
+                    {
+                        tracing::warn!(
+                            target: "engine",
+                            "COW_TRADER_ENABLED without SEARCHER_PRIVATE_KEY: CoW orders will be \
+                             signed by the unfunded simulation key and can never settle"
+                        );
+                    }
+                    let settlement = cfg
+                        .cow
+                        .trader_settlement
+                        .unwrap_or(crate::cow::SETTLEMENT_CONTRACT);
+                    let vault_relayer = cfg
+                        .cow
+                        .trader_vault_relayer
+                        .unwrap_or(crate::cow::VAULT_RELAYER);
+                    match crate::cow_trade::CowTrader::new(
+                        base,
+                        cfg.chain.chain_id,
+                        signer,
+                        store.clone(),
+                        crate::cow_trade::CowTraderConfig {
+                            poll_secs: cfg.cow.trader_poll_secs,
+                            max_open_orders: cfg.cow.trader_max_open_orders,
+                            max_validity_secs: cfg.cow.trader_max_validity_secs,
+                        },
+                        settlement,
+                        vault_relayer,
+                    ) {
+                        Ok(trader) => Some(trader),
+                        Err(error) => {
+                            tracing::warn!(target: "engine", error = %error, "COW_TRADER_ENABLED but the trader failed to build — order endpoints will be absent");
+                            None
+                        }
+                    }
+                }
+                None => {
+                    tracing::warn!(
+                        target: "engine",
+                        chain_id = cfg.chain.chain_id,
+                        "COW_TRADER_ENABLED is set but there is no built-in CoW realm for this \
+                         chain and COW_ORDERBOOK_URL is not set — order endpoints will be absent"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let mut strategies: Vec<Arc<dyn StrategyImpl>> = Vec::new();
         if cfg.strategies.sandwich {
             strategies.push(Arc::new(SandwichStrategy));
@@ -1036,6 +1107,7 @@ impl Engine {
             state_comparisons: Arc::new(parking_lot::Mutex::new(std::collections::VecDeque::new())),
             state_comparison_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             cow_orderbook,
+            cow_trader,
         })
     }
 
@@ -1192,6 +1264,9 @@ impl Engine {
         self.spawn_alert_evaluator();
         if let Some(cow) = &self.cow_orderbook {
             self.spawn_cow_poller(cow.clone());
+        }
+        if let Some(trader) = &self.cow_trader {
+            self.spawn_cow_trader(trader.clone());
         }
         if let Some(rx) = self.replay_rx.lock().take() {
             self.spawn_replay_worker(rx);
@@ -2431,6 +2506,114 @@ impl Engine {
                 tokio::time::sleep(std::time::Duration::from_secs(poll_secs)).await;
             }
         });
+    }
+
+    /// Drive the CoW order *placement* subsystem.
+    ///
+    /// Each tick: reconcile every tracked order against the Order Book API
+    /// (settling fills, dropping terminal states), then — when armed and the
+    /// kill switch is down — offer the optional autonomous peg order. When the
+    /// kill switch trips or the mode leaves live, every open order is cancelled
+    /// immediately, matching the "...and nothing else automatically" posture of
+    /// the private-flow side: a failure here only moves counters, never the
+    /// chain (CoW orders settle via solvers, not this process).
+    fn spawn_cow_trader(self: &Arc<Self>, trader: Arc<crate::cow_trade::CowTrader>) {
+        let this = self.clone();
+        let poll_secs = self.cfg.cow.trader_poll_secs.max(5);
+        tokio::spawn(async move {
+            if this.risk.is_tripped() {
+                trader.cancel_all().await;
+            }
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(poll_secs));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tick.tick().await;
+                let armed = this.mode.live() && !this.risk.is_tripped();
+                if !armed {
+                    trader.cancel_all().await;
+                    continue;
+                }
+                let open = trader.reconcile().await;
+                if this.cfg.cow.trader_auto_peg {
+                    this.cow_auto_peg(&trader, open).await;
+                }
+            }
+        });
+    }
+
+    /// Offer the autonomous sell leg against a live on-chain reference.
+    ///
+    /// Honest by construction: the reference price comes from a real pool
+    /// snapshot for the configured `COW_TRADER_PEG_SELL_TOKEN` /
+    /// `COW_TRADER_PEG_BUY_TOKEN` pair. No resolvable pool no-ops — the peg
+    /// never fabricates a price. The order sells `COW_TRADER_PEG_SELL_AMOUNT`
+    /// of the sell token for at least `amount_out` minus a configured spread,
+    /// i.e. only fills when the market actually crosses ours. Placing the peg
+    /// through CoW's solvers (not our own submits) keeps it on the same rails
+    /// as every other order here.
+    async fn cow_auto_peg(&self, trader: &Arc<crate::cow_trade::CowTrader>, already_open: usize) {
+        let cfg = &self.cfg.cow;
+        let Some(sell) = cfg.trader_peg_sell_token else { return };
+        let Some(buy) = cfg.trader_peg_buy_token else { return };
+        let Some(amount) = cfg.trader_peg_sell_amount else { return };
+        if amount.is_zero() || already_open >= cfg.trader_max_open_orders {
+            return;
+        }
+        // Reference: a real pair on a volatile venue, loaded at the current
+        // head. amount_out() bakes in the pool fee, so the limit below is an
+        // honest maker crossing, not a rounding artifact.
+        let reference = {
+            let block = match self.last_head.lock().as_ref() {
+                Some(head) => head.number,
+                None => return,
+            };
+            let mut found = None;
+            for venue in [crate::dex::Venue::UniV2, crate::dex::Venue::SushiV2] {
+                if found.is_some() {
+                    break;
+                }
+                let Some(pair) = self.ctx.pools.pair_for(sell, buy, venue).await else {
+                    continue;
+                };
+                let Some(pool) = self.ctx.pools.load(pair, venue, block).await else {
+                    continue;
+                };
+                // Only trust the direction we configured; a reserve flip for a
+                // non-symmetric fee is handled by amount_out itself.
+                if let Some(out) = pool.amount_out(sell, amount) {
+                    found = Some(out);
+                }
+            }
+            found
+        };
+        let Some(reference_buy) = reference else {
+            tracing::debug!(target: "cow", %sell, %buy, "auto peg: no live pool reference, no-op");
+            return;
+        };
+        if reference_buy.is_zero() {
+            return;
+        }
+        // Demand a better price than the reference by the configured spread.
+        // scale = 10000 + spread_bps, applied as mul over 10000.
+        let scale = 10_000u128.saturating_add(cfg.trader_peg_spread_bps as u128);
+        let buy_amount = reference_buy.wrapping_mul(U256::from(scale)) / U256::from(10_000u128);
+        let valid_to = crate::types::now_ms() / 1_000 + cfg.trader_max_validity_secs;
+        let params = crate::cow_trade::PlaceParams {
+            sell_token: sell,
+            buy_token: buy,
+            kind: crate::cow::CowOrderKind::Sell,
+            sell_amount: amount,
+            buy_amount,
+            fee_amount: U256::ZERO,
+            valid_to,
+            partially_fillable: true,
+            quote_id: None,
+            full_app_data: None,
+            placed_by: "auto-peg".to_string(),
+        };
+        if let Err(error) = trader.place(params).await {
+            tracing::warn!(target: "cow", error = %error, "auto peg order placement failed");
+        }
     }
 
     /// Evaluate the alert rules on a fixed interval. Transitions are logged,

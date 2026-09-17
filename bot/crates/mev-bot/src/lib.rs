@@ -25,6 +25,7 @@ pub mod config;
 pub mod cow;
 pub mod cow_auction;
 pub mod cow_orderbook;
+pub mod cow_trade;
 pub mod dex;
 pub mod engine;
 pub mod flashblocks;

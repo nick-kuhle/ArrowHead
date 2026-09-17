@@ -650,14 +650,20 @@ impl Default for AlertsConfig {
     }
 }
 
-/// Live CoW Protocol Order Book feed tuning.
+/// Live CoW Protocol Order Book feed + order placement tuning.
 ///
-/// When enabled the bot polls the chain's CoW Order Book API
+/// When `orderbook_enabled` the bot polls the chain's CoW Order Book API
 /// (`api.cow.fi/{realm}/api/v1/auction`) and surfaces the real solver-side
-/// orderflow on `/api/cow`. This feed is **read-only**: it never signs,
-/// pre-signs or submits anything — order placement is a separate, gated build
-/// item (`COW_*` intent endpoints stay offline validators). `COW_ORDERBOOK_URL`
-/// overrides the built-in realm mapping for chains with a CoW deployment.
+/// orderflow on `/api/cow`. That feed is **read-only**.
+///
+/// When `trader_enabled` the bot is additionally a *participant*: the operator
+/// can place, track, cancel and reconcile real, EIP-712-signed CoW orders via
+/// the authed `POST /api/cow/order` / `POST /api/cow/cancel` endpoints, and the
+/// engine polls each order until terminal and cancels everything on kill
+/// switch. Placement never touches the chain directly (CoW solvers do); it
+/// still signs with the searcher key, so identity and allowances are the
+/// operator's live-funded account. `COW_ORDERBOOK_URL` overrides the built-in
+/// realm mapping for chains with a CoW deployment.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CowConfig {
@@ -671,6 +677,32 @@ pub struct CowConfig {
     pub auction_poll_secs: u64,
     /// Defensive cap on orders kept per poll; the book can be large.
     pub max_orders: usize,
+    /// Enable the order-placement subsystem (sign/post/track/cancel CoW
+    /// orders). Off by default — same "no unrequested writes" posture.
+    pub trader_enabled: bool,
+    /// Seconds between placed-order status polls. Clamped to >= 5.
+    pub trader_poll_secs: u64,
+    /// Ceiling on concurrently-open orders this bot tracks.
+    pub trader_max_open_orders: usize,
+    /// Max seconds an order may stay live (validTo = now + <= this).
+    pub trader_max_validity_secs: u64,
+    /// Optional per-chain override for the GPv2Settlement verifying contract.
+    /// Defaults to the canonical CREATE2 address on every realm.
+    pub trader_settlement: Option<Address>,
+    /// Optional per-chain override for the VaultRelayer allowance target.
+    pub trader_vault_relayer: Option<Address>,
+    /// When on, the engine autonomously places a maker *sell* order each poll
+    /// at a spread over a live on-chain pool reference — the tokens and
+    /// notional come from `trader_peg_*`; without a resolvable pool it no-ops.
+    pub trader_auto_peg: bool,
+    /// Spread over the pool reference for the auto peg, in basis points.
+    pub trader_peg_spread_bps: u64,
+    /// Token the auto peg offers to sell (base units; 0/None disables it).
+    pub trader_peg_sell_token: Option<Address>,
+    /// Token the auto peg demands in return.
+    pub trader_peg_buy_token: Option<Address>,
+    /// Notional of `trader_peg_sell_token` each auto-peg order offers.
+    pub trader_peg_sell_amount: Option<U256>,
 }
 
 impl Default for CowConfig {
@@ -680,6 +712,17 @@ impl Default for CowConfig {
             orderbook_url: None,
             auction_poll_secs: 30,
             max_orders: 512,
+            trader_enabled: false,
+            trader_poll_secs: 15,
+            trader_max_open_orders: 4,
+            trader_max_validity_secs: 3600,
+            trader_settlement: None,
+            trader_vault_relayer: None,
+            trader_auto_peg: false,
+            trader_peg_spread_bps: 100,
+            trader_peg_sell_token: None,
+            trader_peg_buy_token: None,
+            trader_peg_sell_amount: None,
         }
     }
 }
@@ -1582,6 +1625,17 @@ impl Config {
                 orderbook_url: env_opt("COW_ORDERBOOK_URL"),
                 auction_poll_secs: env_u64("COW_AUCTION_POLL_SECS", 30).max(5),
                 max_orders: (env_u64("COW_MAX_ORDERS", 512) as usize).max(1),
+                trader_enabled: env_bool("COW_TRADER_ENABLED", false),
+                trader_poll_secs: env_u64("COW_TRADER_POLL_SECS", 15).max(5),
+                trader_max_open_orders: (env_u64("COW_TRADER_MAX_OPEN_ORDERS", 4) as usize).max(1),
+                trader_max_validity_secs: env_u64("COW_TRADER_MAX_VALIDITY_SECS", 3600).clamp(60, 7 * 24 * 3600),
+                trader_settlement: env_opt("COW_SETTLEMENT_ADDRESS").and_then(|v| v.parse().ok()),
+                trader_vault_relayer: env_opt("COW_VAULT_RELAYER_ADDRESS").and_then(|v| v.parse().ok()),
+                trader_auto_peg: env_bool("COW_TRADER_AUTO_PEG", false),
+                trader_peg_spread_bps: env_u64("COW_TRADER_PEG_SPREAD_BPS", 100),
+                trader_peg_sell_token: env_opt("COW_TRADER_PEG_SELL_TOKEN").and_then(|v| v.parse().ok()),
+                trader_peg_buy_token: env_opt("COW_TRADER_PEG_BUY_TOKEN").and_then(|v| v.parse().ok()),
+                trader_peg_sell_amount: env_opt("COW_TRADER_PEG_SELL_AMOUNT").and_then(|v| v.parse().ok()),
             },
             // Infrastructure toggle (not a strategy): scan PairCreated each block.
             pool_discovery: env_bool("POOL_DISCOVERY", true),
@@ -1706,6 +1760,33 @@ impl Config {
             }
             if self.endpoints.executor.is_none() {
                 anyhow::bail!("live execution was armed without EXECUTOR_ADDRESS");
+            }
+        }
+        // CoW placement is a real-order write path; its deployment has to be
+        // reachable and (for the auto peg) fully specified.
+        if self.cow.trader_enabled {
+            if self.cow.orderbook_url.is_none()
+                && crate::cow_orderbook::orderbook_base_url(self.chain.chain_id).is_none()
+            {
+                anyhow::bail!(
+                    "COW_TRADER_ENABLED=true but there is no built-in CoW realm for chain {} \
+                     and COW_ORDERBOOK_URL is unset",
+                    self.chain.chain_id
+                );
+            }
+            if self.cow.trader_auto_peg
+                && !(self.cow.trader_peg_sell_token.is_some()
+                    && self.cow.trader_peg_buy_token.is_some()
+                    && self
+                        .cow
+                        .trader_peg_sell_amount
+                        .as_ref()
+                        .is_some_and(|v| !v.is_zero()))
+            {
+                anyhow::bail!(
+                    "COW_TRADER_AUTO_PEG=true requires COW_TRADER_PEG_SELL_TOKEN, \
+                     COW_TRADER_PEG_BUY_TOKEN and a non-zero COW_TRADER_PEG_SELL_AMOUNT"
+                );
             }
         }
         Ok(())

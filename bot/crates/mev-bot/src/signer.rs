@@ -76,6 +76,18 @@ impl Signer {
         (recid.to_byte(), r, s)
     }
 
+    /// Sign an arbitrary 32-byte digest (EIP-712 order, EIP-191 message) and
+    /// return the 65-byte `r ‖ s ‖ v` signature with `v` normalised to
+    /// 27/28 — the convention the CoW Order Book API signs.
+    pub fn sign_hash_bytes(&self, hash: B256) -> Vec<u8> {
+        let (v, r, s) = self.sign_hash(hash);
+        let mut out = Vec::with_capacity(65);
+        out.extend_from_slice(&r);
+        out.extend_from_slice(&s);
+        out.push(v + 27);
+        out
+    }
+
     /// `X-Flashbots-Signature: <address>:<sig>` over the EIP-191 hash of the
     /// hex-encoded keccak of the request body.
     pub fn flashbots_header(&self, body: &[u8]) -> String {
