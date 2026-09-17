@@ -10,15 +10,15 @@ FROM ghcr.io/foundry-rs/foundry:v1.7.1 AS foundry
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
-    && useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin jerseymikes \
+    && useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin arrowhead \
     && mkdir -p /data \
-    && chown jerseymikes:jerseymikes /data \
+    && chown arrowhead:arrowhead /data \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=foundry /usr/local/bin/anvil /usr/local/bin/anvil
 COPY --from=build /src/bot/target/release/mev-bot /usr/local/bin/mev-bot
 VOLUME ["/data"]
 ENV DB_PATH=/data/mev.sqlite
 EXPOSE 8080
-USER jerseymikes
+USER arrowhead
 HEALTHCHECK --interval=30s --timeout=5s CMD curl -sf http://127.0.0.1:8080/api/health || exit 1
 ENTRYPOINT ["/usr/local/bin/mev-bot"]

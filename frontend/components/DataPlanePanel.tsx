@@ -35,10 +35,10 @@ const MODE_LABEL: Record<DataMode, string> = {
 };
 
 const MODE_TONE: Record<DataMode, string> = {
-  live_preconfirmation: "#35d07f",
-  live_canonical_only: "#22d3ee",
-  degraded: "#f5b544",
-  demo: "#f5b544",
+  live_preconfirmation: "var(--success)",
+  live_canonical_only: "var(--cyan)",
+  degraded: "var(--warn)",
+  demo: "var(--warn)",
 };
 
 const MODE_EXPLAINER: Record<DataMode, string> = {
@@ -125,10 +125,10 @@ function DataPlanePanel({status, now}: {status: StatusResponse | null; now: numb
 
   const fbStateTone =
     fb?.connectionState === "connected"
-      ? "#35d07f"
+      ? "var(--success)"
       : fb?.connectionState === "stalled"
-        ? "#f5b544"
-        : "#ef5350";
+        ? "var(--warn)"
+        : "var(--danger)";
 
   return (
     <div className="panel" style={{padding: 14, display: "grid", gap: 12}}>
@@ -158,22 +158,22 @@ function DataPlanePanel({status, now}: {status: StatusResponse | null; now: numb
             !up
               ? "var(--muted)"
               : up.errors === 0
-                ? "#35d07f"
+                ? "var(--success)"
                 : up.errorRateBps > 1_000
-                  ? "#ef5350"
-                  : "#f5b544"
+                  ? "var(--danger)"
+                  : "var(--warn)"
           }
         >
           {up ? (
             <>
               <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8}}>
                 <Stat label="requests" value={fmt(up.requests)} />
-                <Stat label="errors" value={fmt(up.errors)} tone={up.errors ? "#f5b544" : undefined} />
+                <Stat label="errors" value={fmt(up.errors)} tone={up.errors ? "var(--warn)" : undefined} />
                 <Stat label="error rate" value={bps(up.errorRateBps)} />
                 <Stat
                   label="rate limited"
                   value={fmt(up.rateLimited)}
-                  tone={up.rateLimited ? "#f5b544" : undefined}
+                  tone={up.rateLimited ? "var(--warn)" : undefined}
                   title="HTTP 429 + provider rate-limit JSON-RPC errors — on a public sequencer endpoint, sustained load-shedding here means the data plane needs a paid RPC"
                 />
                 <Stat label="avg latency" value={dur(up.avgLatencyMs)} />
@@ -188,14 +188,14 @@ function DataPlanePanel({status, now}: {status: StatusResponse | null; now: numb
         {/* canonical head */}
         <SubCard
           title="canonical head"
-          tone={status && (status.head.ageMs ?? 0) < 8_000 ? "#35d07f" : "#f5b544"}
+          tone={status && (status.head.ageMs ?? 0) < 8_000 ? "var(--success)" : "var(--warn)"}
         >
           <div style={{display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8}}>
             <Stat label="block" value={status ? `#${status.head.number}` : "—"} />
             <Stat
               label="age"
               value={dur(status?.head.ageMs)}
-              tone={status && (status.head.ageMs ?? 0) >= 8_000 ? "#f5b544" : undefined}
+              tone={status && (status.head.ageMs ?? 0) >= 8_000 ? "var(--warn)" : undefined}
             />
             <Stat
               label="gas used"
@@ -213,7 +213,7 @@ function DataPlanePanel({status, now}: {status: StatusResponse | null; now: numb
               <Stat
                 label="fetches failed"
                 value={fmt(cb.fetchesFailed ?? 0)}
-                tone={(cb.fetchesFailed ?? 0) > 0 ? "#f5b544" : undefined}
+                tone={(cb.fetchesFailed ?? 0) > 0 ? "var(--warn)" : undefined}
                 title="full-block fetch failures — public RPCs rate-limit these; coverage below 100% means delivered-block evidence has gaps"
               />
               <Stat label="fetch coverage" value={bps(cb.fetchSuccessRateBps)} />
@@ -243,23 +243,23 @@ function DataPlanePanel({status, now}: {status: StatusResponse | null; now: numb
                 <Stat
                   label="reconnects"
                   value={fmt(fb.reconnects ?? 0)}
-                  tone={(fb.reconnects ?? 0) > 0 ? "#f5b544" : undefined}
+                  tone={(fb.reconnects ?? 0) > 0 ? "var(--warn)" : undefined}
                 />
                 <Stat label="frames" value={fmt(fb.framesTotal ?? 0)} />
                 <Stat
                   label="malformed"
                   value={fmt(fb.framesMalformed ?? 0)}
-                  tone={(fb.framesMalformed ?? 0) > 0 ? "#f5b544" : undefined}
+                  tone={(fb.framesMalformed ?? 0) > 0 ? "var(--warn)" : undefined}
                 />
                 <Stat
                   label="state gaps"
                   value={fmt(fb.stateGaps ?? 0)}
-                  tone={(fb.stateGaps ?? 0) > 0 ? "#f5b544" : undefined}
+                  tone={(fb.stateGaps ?? 0) > 0 ? "var(--warn)" : undefined}
                 />
                 <Stat
                   label="sealed match"
                   value={bps(fb.sealedMatchRateBps)}
-                  tone={fb.sealedMatchRateBps != null && fb.sealedMatchRateBps < 9_500 ? "#ef5350" : undefined}
+                  tone={fb.sealedMatchRateBps != null && fb.sealedMatchRateBps < 9_500 ? "var(--danger)" : undefined}
                   title="share of sealed blocks whose transaction sequence exactly matched the preconfirmed stream — a feed that cannot match what seals cannot be trusted to trigger sends"
                 />
                 <Stat

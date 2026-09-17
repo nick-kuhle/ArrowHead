@@ -231,7 +231,7 @@ contracts/src/                                          (unchanged — 11,497-by
 contracts/test/mocks/SimV2Pair.sol               (new)  faithful V2 flash-swap mock
 contracts/test/mocks/MockERC20.sol                      honeypot blocking toggle
 contracts/test/SniperVaultSimFixture.t.sol       (new)  fixture semantics coverage
-contracts/test/JerseyMikesFeeRouter.t.sol               reentrancy/failure/rounding
+contracts/test/ArrowHeadFeeRouter.t.sol               reentrancy/failure/rounding
 contracts/script/compile-check.js                       artifact emission for fixture
 frontend/components/SniperPanel.tsx                     SNIPER MODE control, ledger
                                                         switcher, source badges

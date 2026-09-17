@@ -58,14 +58,14 @@ export default function ChainSwitcher() {
     const only = chains[0];
     return (
       <div
-        style={{display: "flex", gap: 2, background: "#070b11", border: "1px solid #1b2532", borderRadius: 6, padding: 2}}
+        style={{display: "flex", gap: 2, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 2}}
         role="group"
         aria-label="chain"
       >
         <span
           className="badge live"
           style={{
-            color: "#35d07f",
+            color: "var(--success)",
             font: "inherit",
             fontSize: 11,
             padding: "2px 10px",
@@ -81,7 +81,7 @@ export default function ChainSwitcher() {
 
   return (
     <div
-      style={{display: "flex", gap: 2, background: "#070b11", border: "1px solid #1b2532", borderRadius: 6, padding: 2}}
+      style={{display: "flex", gap: 2, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 6, padding: 2}}
       role="tablist"
       aria-label="chain"
     >
@@ -95,7 +95,7 @@ export default function ChainSwitcher() {
             onClick={() => select(c.slug)}
             className={isActive ? "badge live" : "badge"}
             style={{
-              color: isActive ? "#35d07f" : "#8ba0bd",
+              color: isActive ? "var(--success)" : "#8ba0bd",
               cursor: "pointer",
               font: "inherit",
               fontSize: 11,

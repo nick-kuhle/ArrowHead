@@ -1,4 +1,4 @@
-# Maintaining JerseyMikes
+# Maintaining ArrowHead
 
 A guide for the team that comes next. This is not a how-to for using the
 bot — that's what [`SETUP.md`](SETUP.md) and the README are for. This is

@@ -2,37 +2,37 @@
   "BALANCER_VAULT": [
     {
       "length": 32,
-      "start": 641
+      "start": 781
     },
     {
       "length": 32,
-      "start": 4183
+      "start": 5429
     },
     {
       "length": 32,
-      "start": 4367
+      "start": 5625
     },
     {
       "length": 32,
-      "start": 5597
+      "start": 7127
     }
   ],
   "WETH": [
     {
       "length": 32,
-      "start": 590
+      "start": 730
     },
     {
       "length": 32,
-      "start": 5996
+      "start": 7873
     },
     {
       "length": 32,
-      "start": 6199
+      "start": 8076
     },
     {
       "length": 32,
-      "start": 6286
+      "start": 8163
     }
   ]
 }

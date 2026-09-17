@@ -1,4 +1,4 @@
-# JerseyMikes token-sniper production audit
+# ArrowHead token-sniper production audit
 
 **Audit date:** 2026-08-24  
 **Branch:** `work/production-readiness`  
@@ -75,7 +75,7 @@ fail-closed.
 
 - Added fee math and configuration helpers in `frontend/lib/swap.ts`:
   `calculatePlatformFee`, net amount calculation and fee-router configuration.
-- Added `contracts/src/JerseyMikesFeeRouter.sol`, which has an immutable
+- Added `contracts/src/ArrowHeadFeeRouter.sol`, which has an immutable
   non-zero treasury, 100 bps fee, owner-managed router allowlist, atomic native
   or ERC-20 fee collection, allowance cleanup and reentrancy protection.
 - Added `DeployFeeRouter.s.sol` and three Foundry tests covering native fee

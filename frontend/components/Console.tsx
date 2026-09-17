@@ -13,8 +13,11 @@ import Phase1Panel from "./Phase1Panel";
 import ModeSwitch from "./ModeSwitch";
 import ChainSwitcher from "./ChainSwitcher";
 import Section from "./Section";
+import ThemeToggle from "./ThemeToggle";
 import DataPlanePanel from "./DataPlanePanel";
 import WalletButton from "./WalletButton";
+import CowPanel from "./CowPanel";
+import {Icon, Pill, Stat} from "./ui";
 import type {
   ActualMevResponse,
   CompetitionResponse,
@@ -41,8 +44,6 @@ import {useFeed} from "@/lib/feed";
 import {onChainChange, readActiveChain, withChain} from "@/lib/chain";
 import {useWallet} from "@/lib/wallet";
 
-/** Chain-id → operator-friendly label for the mismatch banner. Kept in sync
- *  with the switcher's LABELS map in `frontend/lib/chains.ts`. */
 const CHAIN_ID_LABEL: Record<number, string> = {
   1: "Ethereum",
   8453: "Base",
@@ -54,11 +55,6 @@ const CHAIN_ID_LABEL: Record<number, string> = {
 const labelFor = (id: number | null | undefined) =>
   id == null ? "an unknown chain" : CHAIN_ID_LABEL[id] ?? `chain ${id}`;
 
-/** Registry slug → the chain id that slug promises (work order 0.3). When
- *  the CHAINS env maps `base` to a URL that answers for Ethereum, the
- *  *console registry* is wrong — neither the bot nor the wallet is at
- *  fault — and the banner below says exactly that. Kept in sync with the
- *  switcher's LABELS map in `frontend/lib/chains.ts`. */
 const SLUG_EXPECTED_CHAIN: Record<string, number> = {
   ethereum: 1,
   mainnet: 1,
@@ -72,15 +68,24 @@ const SLUG_EXPECTED_CHAIN: Record<string, number> = {
 const FEED_MAX = 400;
 const POLL_MS = 4000;
 
+const NAV: {id: string; icon: string; label: string}[] = [
+  {id: "overview", icon: "pie", label: "Overview"},
+  {id: "cow", icon: "swap", label: "CoW orders"},
+  {id: "data-plane", icon: "activity", label: "Data plane"},
+  {id: "pnl", icon: "arrow-up", label: "P/L"},
+  {id: "activity", icon: "bolt", label: "Activity"},
+  {id: "history", icon: "table", label: "Transactions"},
+  {id: "validation", icon: "shield", label: "Validation"},
+  {id: "relay", icon: "layers", label: "Relay"},
+  {id: "funnel", icon: "activity", label: "Funnel"},
+  {id: "risk", icon: "shield", label: "Controls"},
+  {id: "golive", icon: "send", label: "Go live"},
+  {id: "executor", icon: "wallet", label: "Executor"},
+];
+
 export default function Console() {
-  // Multi-chain: the active chain slug drives every API path (the server
-  // falls back to the default chain when it is null or unknown) and the
-  // keyed remount below so no panel can show another chain's data.
   const [chainSlug, setChainSlug] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
-  // True once the bot has answered 503 for a whole poll round. The proxy is
-  // honest now (it fabricates nothing), so a null `status` the UI can use
-  // falls out as an explicit "bot offline" banner instead of empty dashes.
   const [botDown, setBotDown] = useState(false);
   const [pnl, setPnl] = useState<PnlResponse | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
@@ -93,16 +98,12 @@ export default function Console() {
   const [reorgs, setReorgs] = useState<ReorgRow[]>([]);
   const [feedFilter, setFeedFilter] = useState("all");
   const [strategyFilter, setStrategyFilter] = useState("all");
-  // Batched + typed SSE consumption: frames accumulate off-render and flush
-  // together, so a 200-event burst costs one render instead of 200.
   const {events, connected} = useFeed(withChain("/api/stream", chainSlug), FEED_MAX);
 
   const load = useCallback(async () => {
     const get = async <T,>(p: string, fallback: T): Promise<T> => {
       try {
         const r = await fetch(withChain(`/api/bot/${p}`, chainSlug), {cache: "no-store"});
-        // The proxy answers 503 (never invented data) when the bot is down;
-        // anything that is not 2xx is an offline marker for this endpoint.
         if (!r.ok) return fallback;
         return (await r.json()) as T;
       } catch {
@@ -123,14 +124,6 @@ export default function Console() {
       get<ReorgRow[]>("reorgs?limit=15", []),
     ]);
     setBotDown(s === null);
-    // Identity-preserving updates.
-    //
-    // Every poll used to hand each `useState` a brand new array or object,
-    // even on the ~95% of ticks where the bot returned exactly the same rows.
-    // A new identity re-renders every consumer and defeats `memo` /
-    // `useMemo` downstream — the equity chart re-rendered its SVG four times
-    // a second against unchanged data. `keepIfSame` swaps in the new value
-    // only when the serialised payload actually differs.
     if (s) setStatus((prev) => keepIfSame(prev, s));
     if (p) setPnl((prev) => keepIfSame(prev, p));
     setSeries((prev) => keepIfSame(prev, Array.isArray(se) ? se : []));
@@ -143,14 +136,11 @@ export default function Console() {
     setReorgs((prev) => keepIfSame(prev, Array.isArray(rg) ? rg : []));
   }, [chainSlug]);
 
-  // Active chain: initialise from localStorage, follow the switcher.
   useEffect(() => {
     setChainSlug(readActiveChain());
     return onChainChange(setChainSlug);
   }, []);
 
-  // Wallet state for the mismatch banner (WS-H3). `useWallet` is a shared
-  // context so this doesn't spin up another provider subscription.
   const wallet = useWallet();
 
   useEffect(() => {
@@ -161,43 +151,29 @@ export default function Console() {
 
   const demo = Boolean(status?.demo);
   const chainId = status?.chain.id;
-  // Amber banner when the wallet and the console are pointed at different
-  // chains — a real-world source of confusion (WS-H3). Suppressed when the
-  // wallet isn't connected or the bot's chain hasn't come back yet.
   const walletMismatch =
     wallet.address !== null &&
     wallet.chainId !== null &&
     chainId !== undefined &&
     wallet.chainId !== chainId;
-  // Amber banner when the console registry itself lies: the switcher says
-  // "Base" but the mapped URL answered for Ethereum (work order 0.3). Needs
-  // the bot's real answer, so it is suppressed under demo fixtures.
   const registryMismatch =
     !demo &&
     chainSlug != null &&
     SLUG_EXPECTED_CHAIN[chainSlug] !== undefined &&
     chainId !== undefined &&
     SLUG_EXPECTED_CHAIN[chainSlug] !== chainId;
-  // Work order 0.3: the data-plane verdict, shown verbatim in the header so
-  // a sick plane is visible without opening the panel. Rendered from
-  // `status.dataMode` directly; no separate variable needed now that the demo
-  // fixture that used to populate it is gone.
 
-  // Tab title: prefix the active chain so a screenshot or a browser tab
-  // strip reads "Base · ArrowHead …" (WS-H4). Runs client-side only.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const name = status?.chain.name ?? (chainSlug ? chainSlug[0].toUpperCase() + chainSlug.slice(1) : "");
     document.title = name ? `${name} · ArrowHead MEV terminal` : "ArrowHead — MEV terminal";
   }, [status?.chain.name, chainSlug]);
+
   const totalNet = pnl?.totalNetWei ?? "0";
   const filteredSims = useMemo(
     () => (strategyFilter === "all" ? sims : sims.filter((s) => s.strategy === strategyFilter)),
-    [sims, strategyFilter]
+    [strategyFilter, sims]
   );
-
-  // One pass over the strategy rows for both the win rate and the sim total,
-  // instead of two `reduce`s plus a third inline in the card below.
   const {winRate, totalSims} = useMemo(() => {
     const rows = pnl?.byStrategy ?? [];
     let w = 0;
@@ -209,673 +185,395 @@ export default function Console() {
     return {winRate: n ? (100 * w) / n : 0, totalSims: n};
   }, [pnl]);
 
+  const dataModeTone =
+    status?.dataMode === "live_preconfirmation"
+      ? "pos"
+      : status?.dataMode === "live_canonical_only"
+        ? "accent"
+        : "warn";
+  const dataModeLabel =
+    status?.dataMode === "live_preconfirmation"
+      ? "preconf live"
+      : status?.dataMode === "live_canonical_only"
+        ? "canonical only"
+        : "data degraded";
+
   return (
-    <main style={{padding: 12, display: "grid", gap: 12, maxWidth: 1800, margin: "0 auto"}}>
-      {/* header */}
-      <header className="panel" style={{display: "flex", alignItems: "center", gap: 16, padding: "10px 14px", flexWrap: "wrap"}}>
-        <div style={{fontSize: 15}}>
-          <span className="brand">ARROWHEAD</span>
-          <span className="muted" style={{marginLeft: 8, fontSize: 11}}>MEV terminal</span>
-        </div>
+    <div className="min-h-screen">
+      {/* ── top bar ─────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 sm:px-5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
+              <Icon name="arrow-up" size={17} />
+            </span>
+            <div className="leading-tight">
+              <div className="brand text-[15px] tracking-wide">ARROWHEAD</div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">MEV terminal</div>
+            </div>
+          </div>
 
-        <ChainSwitcher />
+          <ChainSwitcher />
 
-        <ModeSwitch mode={status?.mode} armed={status?.liveArmed} demo={demo} onChanged={load} />
+          <ModeSwitch mode={status?.mode} armed={status?.liveArmed} demo={demo} onChanged={load} />
 
-        {!botDown && status && status.dataMode && (
-          <span
-            className="badge"
-            style={{
-              color:
-                status.dataMode === "live_preconfirmation"
-                  ? "#35d07f"
-                  : status.dataMode === "live_canonical_only"
-                    ? "#22d3ee"
-                    : "#f5b544",
-            }}
-            title={
-              status.dataMode === "live_preconfirmation"
-                ? "canonical head fresh + preconfirmation feed live"
-                : status.dataMode === "live_canonical_only"
-                  ? "canonical head fresh; no preconfirmation frames (normal outside Base)"
-                  : "canonical head is stale — nothing on this console is live"
-            }
-          >
-            <span
-              className="dot"
-              style={{
-                background:
-                  status.dataMode === "live_preconfirmation"
-                    ? "#35d07f"
-                    : status.dataMode === "live_canonical_only"
-                      ? "#22d3ee"
-                      : "#f5b544",
-              }}
-            />
-            {status.dataMode === "live_preconfirmation"
-              ? "preconf live"
-              : status.dataMode === "live_canonical_only"
-                ? "canonical only"
-                : "data degraded"}
-          </span>
-        )}
+          <div className="flex items-center gap-2">
+            {!botDown && status?.dataMode && (
+              <Pill tone={dataModeTone} title={status.dataMode}><Icon name="activity" size={11} />{dataModeLabel}</Pill>
+            )}
+            {botDown && <Pill tone="neg" title="the bot answered HTTP 503 — nothing on this console is invented"><Icon name="alert" size={11} />offline</Pill>}
+            <Pill
+              tone={connected && !botDown ? "pos" : "neutral"}
+              title={botDown && !connected ? "bot unreachable — no live feed" : connected ? "live feed subscribed" : "feed disconnected"}
+            >
+              <Icon name="bolt" size={11} className={connected && !botDown ? "live" : ""} />
+              feed
+            </Pill>
+          </div>
 
-        {botDown && (
-          <span
-            className="badge"
-            style={{color: "#ff5c5c"}}
-            title="the bot answered HTTP 503 — this console shows nothing invented"
-          >
-            bot offline
-          </span>
-        )}
-
-        <span
-          className={connected ? "badge live" : "badge"}
-          style={{color: connected && !botDown ? "#35d07f" : "#6b7c93"}}
-          title={botDown && !connected ? "bot unreachable — no live feed" : connected ? "live feed subscribed" : "feed disconnected"}
-        >
-          <span className={`dot ${connected && !botDown ? "dot-live" : ""}`} style={{background: connected && !botDown ? "#35d07f" : "#6b7c93"}} /> feed
-        </span>
-
-        <WalletButton expectedChainId={chainId} />
-
-        <div style={{marginLeft: "auto", display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap"}}>
-          <HeadStat label="chain" value={status ? `${status.chain.name} (${status.chain.id})` : "—"} />
-          <HeadStat label="block" value={status ? `#${status.head.number}` : "—"} />
-          <HeadStat label="base fee" value={status ? `${gwei(status.head.baseFeeWei)} gwei` : "—"} />
-          <HeadStat label="pools" value={status ? String(status.pools) : "—"} />
-          <HeadStat label="nonce" value={status?.inventory ? String(status.inventory.nonce) : "—"} />
-          <HeadStat
-            label="kill switch"
-            value={status?.risk.killSwitchTripped ? "TRIPPED" : "armed"}
-            tone={status?.risk.killSwitchTripped ? "neg" : undefined}
-          />
+          <div className="ml-auto flex items-center gap-2.5">
+            <div className="hidden items-center gap-5 xl:flex">
+              <HeadStat label="chain" value={status ? `${status.chain.name} · ${status.chain.id}` : "—"} />
+              <HeadStat label="block" value={status ? `#${status.head.number}` : "—"} />
+              <HeadStat label="base fee" value={status ? `${gwei(status.head.baseFeeWei)} gwei` : "—"} />
+              <HeadStat label="kill switch" value={status?.risk.killSwitchTripped ? "TRIPPED" : "armed"} warn={status?.risk.killSwitchTripped} />
+            </div>
+            <WalletButton expectedChainId={chainId} />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
-      <div key={chainSlug ?? "default"}>
-      {/* wallet ↔ console chain mismatch (WS-H3): a wallet on Ethereum while
-          the console shows Base is a real bug source — spell it out.
-          Suppressed when either side is unknown. */}
-      {walletMismatch && (
-        <div
-          role="status"
-          style={{
-            border: "1px solid var(--amber)",
-            background: "rgba(245, 181, 68, 0.08)",
-            color: "var(--amber)",
-            padding: "6px 10px",
-            borderRadius: 4,
-            fontSize: 11,
-            marginBottom: 8,
-          }}
-        >
-          wallet is on <strong>{labelFor(wallet.chainId)}</strong> — console is showing{" "}
-          <strong>{status?.chain.name ?? labelFor(chainId)}</strong>. Chain-scoped actions (deploy,
-          allowlist, fund) will refuse until the wallet switches.
-        </div>
-      )}
+      <main className="mx-auto max-w-[1600px] px-3 py-4 sm:px-5 space-y-3.5">
+        <div key={chainSlug ?? "default"}>
+          {/* ── banners ────────────────────────────────────────────── */}
+          {walletMismatch && (
+            <Banner tone="warn" icon="alert">
+              wallet is on <strong>{labelFor(wallet.chainId)}</strong> — console is showing{" "}
+              <strong>{status?.chain.name ?? labelFor(chainId)}</strong>. Chain-scoped actions (deploy, allowlist, fund) refuse until the wallet switches.
+            </Banner>
+          )}
+          {registryMismatch && (
+            <Banner tone="warn" icon="alert">
+              console registry maps <strong>{chainSlug}</strong> to <strong>{labelFor(SLUG_EXPECTED_CHAIN[chainSlug!])}</strong>, but that bot URL answered for{" "}
+              <strong>{status?.chain.name ?? labelFor(chainId)}</strong> (chain id {chainId}). Fix the CHAINS env entry, not the bot.
+            </Banner>
+          )}
+          {botDown && (
+            <Banner tone="neg" icon="alert">
+              the <strong>{chainSlug ?? "default"}</strong> bot is offline — every panel below is empty because nothing is being invented to fill it. Start the bot (check{" "}
+              <code>BOT_API_URL</code> / <code>CHAINS</code>) and the console comes alive by itself. No transaction can be sent while it is down.
+            </Banner>
+          )}
 
-      {/* wrong console registry (work order 0.3): the slug promises one
-          chain, the mapped bot URL answered for another. Nothing the bot or
-          the wallet can fix — the CHAINS env entry is wrong. */}
-      {registryMismatch && (
-        <div
-          role="status"
-          style={{
-            border: "1px solid var(--amber)",
-            background: "rgba(245, 181, 68, 0.08)",
-            color: "var(--amber)",
-            padding: "6px 10px",
-            borderRadius: 4,
-            fontSize: 11,
-            marginBottom: 8,
-          }}
-        >
-          console registry maps <strong>{chainSlug}</strong> to{" "}
-          <strong>{labelFor(SLUG_EXPECTED_CHAIN[chainSlug!])}</strong>, but that bot URL answered for{" "}
-          <strong>{status?.chain.name ?? labelFor(chainId)}</strong> (chain id {chainId}). The CHAINS
-          env entry is pointed at the wrong bot — fix the registry, not the bot.
-        </div>
-      )}
+          {/* ── jump nav ───────────────────────────────────────────── */}
+          <nav className="sticky top-[60px] z-30 -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 py-1.5 sm:top-[56px]" aria-label="sections" style={{scrollbarWidth: "none"}}>
+            {NAV.map((n) => (
+              <a
+                key={n.id}
+                href={`#${n.id}`}
+                className="inline-flex flex-none items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--panel)] px-3 py-1 text-[11.5px] font-semibold text-[var(--muted)] no-underline transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                <Icon name={n.icon} size={12} />
+                {n.label}
+              </a>
+            ))}
+          </nav>
 
-      {/* bot is down: the proxy fabricates nothing, so every read answered
-          503 and every panel below stays empty on purpose. Say so up front. */}
-      {botDown && (
-        <div
-          role="status"
-          style={{
-            border: "1px solid var(--red)",
-            background: "rgba(255, 92, 92, 0.07)",
-            color: "var(--red)",
-            padding: "6px 10px",
-            borderRadius: 4,
-            fontSize: 11,
-            marginBottom: 8,
-          }}
-        >
-          the <strong>{chainSlug ?? "default"}</strong> bot is offline — every panel below is empty
-          because nothing is being invented to fill it. Start the bot for this chain (and check the{" "}
-          <code>BOT_API_URL</code> / <code>CHAINS</code> env), and the console will come alive on its
-          own. No transaction can be sent while the bot is down.
-        </div>
-      )}
+          {/* ── overview KPI cards ──────────────────────────────────── */}
+          <section id="overview" className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7" style={{scrollMarginTop: 8}}>
+            <Stat label="simulated net P/L" value={`${signedEth(totalNet)} ETH`} tone={BigInt(totalNet) >= 0n ? "pos" : "neg"} sub="fork simulations only" icon="arrow-up" />
+            <Stat label="win rate" value={`${winRate.toFixed(1)}%`} sub={`${totalSims} sims`} icon="pie" />
+            <Stat label="opportunities" value={String(status?.stats.opportunities ?? 0)} sub={`${status?.stats.rejected ?? 0} risk-rejected`} icon="bolt" />
+            <Stat label="would-submit" value={String(status?.stats.submittable ?? 0)} sub="net-positive bundles" tone="pos" icon="check" />
+            <Stat label="mempool seen" value={(status?.stats.pendingSeen ?? 0).toLocaleString()} sub={`${status?.stats.hintsSeen ?? 0} mev-share hints`} icon="activity" />
+            <Stat label="sim backends" value={`${status?.simBackends.anvilFork ? "fork" : "—"} / ${status?.simBackends.relayCallBundle ? "relay" : "—"}`} sub="anvil / eth_callBundle" icon="layers" />
+            <Stat label="bloxroute blocks" value={(status?.stats.relayBlocksSeen ?? 0).toLocaleString()} sub={`${(status?.stats.relayTxsSeen ?? 0).toLocaleString()} delivered txs`} icon="table" />
+          </section>
 
-      {/* jump nav — the page is long; this keeps every section one click away */}
-      <nav
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 30,
-          display: "flex",
-          gap: 4,
-          flexWrap: "wrap",
-          alignItems: "center",
-          background: "rgba(4, 6, 8, 0.92)",
-          border: "1px solid var(--line)",
-          borderRadius: 4,
-          padding: "5px 8px",
-        }}
-      >
-        <span className="muted" style={{fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em"}}>
-          jump
-        </span>
-        {[
-          ["data-plane", "Data plane"],
-          ["pnl", "P/L"],
-          ["activity", "Activity"],
-          ["history", "Transactions"],
-          ["relay", "Relay blocks"],
-          ["funnel", "Funnel"],
-          ["risk", "Controls"],
-          ["golive", "Go live"],
-          ["executor", "Executor"],
-        ].map(([id, label]) => (
-          <a
-            key={id}
-            href={`#${id}`}
-            style={{
-              fontSize: 11,
-              color: "var(--muted)",
-              textDecoration: "none",
-              padding: "2px 8px",
-              borderRadius: 4,
-              border: "1px solid transparent",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--cyan)";
-              e.currentTarget.style.borderColor = "var(--line)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--muted)";
-              e.currentTarget.style.borderColor = "transparent";
-            }}
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
+          {/* ── CoW order placement ─────────────────────────────────── */}
+          <Section id="cow" icon="swap" title="CoW Protocol — order placement" subtitle="open orders · quote → sign → place → reconcile · live book">
+            <CowPanel chainId={chainId} chainSlug={chainSlug} />
+          </Section>
 
-      {/* stat cards */}
-      <section style={{display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12}}>
-        <Card
-          title="simulated net P/L"
-          value={`${signedEth(totalNet)} ETH`}
-          tone={BigInt(totalNet) >= 0n ? "pos" : "neg"}
-          sub="fork simulations only"
-        />
-        <Card title="win rate" value={`${winRate.toFixed(1)}%`} sub={`${totalSims} sims`} />
-        <Card
-          title="opportunities"
-          value={String(status?.stats.opportunities ?? 0)}
-          sub={`${status?.stats.rejected ?? 0} risk-rejected`}
-        />
-        <Card
-          title="would-submit"
-          value={String(status?.stats.submittable ?? 0)}
-          tone="pos"
-          sub="net-positive bundles"
-        />
-        <Card
-          title="mempool seen"
-          value={(status?.stats.pendingSeen ?? 0).toLocaleString()}
-          sub={`${status?.stats.hintsSeen ?? 0} mev-share hints`}
-        />
-        <Card
-          title="sim backends"
-          value={`${status?.simBackends.anvilFork ? "fork" : "—"} / ${status?.simBackends.relayCallBundle ? "relay" : "—"}`}
-          sub="anvil / eth_callBundle"
-        />
-        <Card
-          title="bloxroute blocks"
-          value={(status?.stats.relayBlocksSeen ?? 0).toLocaleString()}
-          sub={`${(status?.stats.relayTxsSeen ?? 0).toLocaleString()} delivered txs`}
-        />
-      </section>
+          {/* ── data plane diagnostics ──────────────────────────────── */}
+          <Section id="data-plane" icon="activity" title="Data plane" subtitle="upstream RPC · canonical head · preconfirmation feed · candidates by source">
+            <DataPlanePanel status={status} now={Date.now()} />
+          </Section>
 
-      {/* data-plane diagnostics (work order 0.3): the one screen that
-          separates a missing bot, a wrong registry, a broken upstream RPC,
-          a quiet preconfirmation feed and a genuinely calm chain. */}
-      <Section
-        id="data-plane"
-        title="data plane"
-        subtitle="upstream RPC · canonical head · preconfirmation feed · candidates by source"
-      >
-        <DataPlanePanel status={status} now={Date.now()} />
-      </Section>
-
-      {/* equity + strategies */}
-      <section
-        id="pnl"
-        style={{display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 12, scrollMarginTop: 56}}
-      >
-        <div className="panel">
-          <div className="panel-head">
-            <span>cumulative simulated P/L (ETH)</span>
-            <span className="muted">{series.length} blocks</span>
-          </div>
-          <EquityChart series={series} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-head">
-            <span>per-strategy</span>
-          </div>
-          <table className="grid">
-            <thead>
-              <tr>
-                <th>strategy</th>
-                <th style={{textAlign: "right"}}>sims</th>
-                <th style={{textAlign: "right"}}>win</th>
-                <th style={{textAlign: "right"}}>net ETH</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(pnl?.byStrategy ?? []).map((r) => (
-                <tr key={r.strategy}>
-                  <td>
-                    <span className="dot" style={{background: STRATEGY_COLOR[r.strategy], marginRight: 6}} />
-                    {STRATEGY_LABEL[r.strategy] ?? r.strategy}
-                  </td>
-                  <td style={{textAlign: "right"}}>{r.simulations}</td>
-                  <td style={{textAlign: "right"}}>
-                    {r.simulations ? `${((100 * r.wins) / r.simulations).toFixed(0)}%` : "—"}
-                  </td>
-                  <td style={{textAlign: "right"}} className={BigInt(r.net_profit_wei) >= 0n ? "pos" : "neg"}>
-                    {signedEth(r.net_profit_wei)}
-                  </td>
-                </tr>
-              ))}
-              {!pnl?.byStrategy.length && (
-                <tr>
-                  <td colSpan={4} className="muted" style={{textAlign: "center", padding: 16}}>
-                    no data yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* feed + simulations */}
-      <Section id="activity" title="Activity" subtitle="live tape · events">
-      <section style={{display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12}}>
-        <div className="panel">
-          <div className="panel-head">
-            <span>live data feed</span>
-            <select value={feedFilter} onChange={(e) => setFeedFilter(e.target.value)} style={selectStyle}>
-              {[
-                "all",
-                "pending",
-                "block",
-                "mev_share_hint",
-                "opportunity",
-                "simulation",
-                "bundle",
-                "relay",
-                "relay_block",
-                "reorg",
-                "alert",
-              ].map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
-          </div>
-          <LiveFeed events={events} filter={feedFilter} chainId={chainId} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-head">
-            <span>simulated transaction history</span>
-            <select value={strategyFilter} onChange={(e) => setStrategyFilter(e.target.value)} style={selectStyle}>
-              {[
-                "all",
-                "sandwich",
-                "sandwich_v3",
-                "jit",
-                "atomic_arb",
-                "liquidation",
-                "liquidation_compound",
-                "liquidation_morpho",
-                "liquidation_maker",
-                "oracle_frontrun",
-              ].map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{maxHeight: 420, overflowY: "auto"}}>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>age</th>
-                  <th>strategy</th>
-                  <th>backend</th>
-                  <th style={{textAlign: "right"}}>gas</th>
-                  <th style={{textAlign: "right"}}>gross</th>
-                  <th style={{textAlign: "right"}}>net ETH</th>
-                  <th>victim tx</th>
-                  <th>result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSims.map((s, i) => {
-                  const victim = s.victims ? s.victims.split(",")[0] : null;
-                  const link = txUrl(chainId, victim);
-                  return (
-                    <tr key={`${s.opportunityId}-${i}`} title={s.notes}>
-                      <td className="muted">{ago(s.createdAtMs)}</td>
-                      <td style={{color: STRATEGY_COLOR[s.strategy]}}>{s.strategy}</td>
-                      <td className="muted">{s.backend}</td>
-                      <td style={{textAlign: "right"}}>{s.gasUsed.toLocaleString()}</td>
-                      <td style={{textAlign: "right"}}>{weiToEth(s.grossWei, 5)}</td>
-                      <td style={{textAlign: "right"}} className={BigInt(s.netWei) >= 0n ? "pos" : "neg"}>
-                        {signedEth(s.netWei)}
-                      </td>
+          {/* ── equity + strategies ─────────────────────────────────── */}
+          <section id="pnl" className="grid grid-cols-1 gap-3 xl:grid-cols-3" style={{scrollMarginTop: 8}}>
+            <Card xl className="xl:col-span-2">
+              <div className="panel-head">
+                <span className="flex items-center gap-2"><Icon name="arrow-up" size={14} /> cumulative simulated P/L (ETH)</span>
+                <span className="muted">{series.length} blocks</span>
+              </div>
+              <EquityChart series={series} />
+            </Card>
+            <Card>
+              <div className="panel-head"><span className="flex items-center gap-2"><Icon name="pie" size={14} /> per-strategy</span></div>
+              <table className="grid">
+                <thead>
+                  <tr>
+                    <th>strategy</th>
+                    <th style={{textAlign: "right"}}>sims</th>
+                    <th style={{textAlign: "right"}}>win</th>
+                    <th style={{textAlign: "right"}}>net ETH</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(pnl?.byStrategy ?? []).map((r) => (
+                    <tr key={r.strategy}>
                       <td>
-                        {link && victim ? (
-                          <a
-                            href={link}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={`victim tx ${victim} — view on the block explorer`}
-                            style={{color: "#22d3ee", textDecoration: "none"}}
-                          >
-                            {shortHash(victim, 4)} ↗
-                          </a>
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
+                        <span className="dot" style={{background: STRATEGY_COLOR[r.strategy], marginRight: 6}} />
+                        {STRATEGY_LABEL[r.strategy] ?? r.strategy}
                       </td>
-                      <td className={s.success ? "pos" : "muted"}>
-                        <SimVerdict success={s.success} revertReason={s.revertReason} />
-                      </td>
+                      <td style={{textAlign: "right"}}>{r.simulations}</td>
+                      <td style={{textAlign: "right"}}>{r.simulations ? `${((100 * r.wins) / r.simulations).toFixed(0)}%` : "—"}</td>
+                      <td style={{textAlign: "right"}} className={BigInt(r.net_profit_wei) >= 0n ? "pos" : "neg"}>{signedEth(r.net_profit_wei)}</td>
                     </tr>
-                  );
-                })}
-                {!filteredSims.length && (
-                  <tr>
-                    <td colSpan={8} className="muted" style={{textAlign: "center", padding: 16}}>
-                      no simulations yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+                  ))}
+                  {!pnl?.byStrategy.length && (
+                    <tr><td colSpan={4} className="muted text-center py-8">no data yet</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </Card>
+          </section>
 
-      </Section>
-
-      {/* transactions + opportunities */}
-      <Section id="history" title="Simulated transactions & opportunities" subtitle="newest first">
-      <section style={{display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", gap: 12}}>
-        <div className="panel">
-          <div className="panel-head">
-            <span>opportunities found</span>
-            <span className="muted">newest first</span>
-          </div>
-          <div style={{maxHeight: 300, overflowY: "auto"}}>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>age</th>
-                  <th>strategy</th>
-                  <th style={{textAlign: "right"}}>expected</th>
-                  <th style={{textAlign: "right"}}>notional</th>
-                  <th>block</th>
-                  <th>victim</th>
-                  <th>notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {opps.map((o) => {
-                  const victim = o.victims ? o.victims.split(",")[0] : null;
-                  const victimLink = txUrl(chainId, victim);
-                  const blockLink = blockUrl(chainId, o.targetBlock);
-                  return (
-                    <tr key={o.id}>
-                      <td className="muted">{ago(o.createdAtMs)}</td>
-                      <td style={{color: STRATEGY_COLOR[o.strategy]}}>{o.strategy}</td>
-                      <td style={{textAlign: "right"}}>{weiToEth(o.expectedWei, 5)}</td>
-                      <td style={{textAlign: "right"}}>{weiToEth(o.notionalWei, 3)}</td>
-                      <td className="muted">
-                        {blockLink ? (
-                          <a
-                            href={blockLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="view this block on the explorer"
-                            style={{color: undefined}}
-                          >
-                            {o.targetBlock}
-                          </a>
-                        ) : (
-                          o.targetBlock
-                        )}
-                      </td>
-                      <td className="muted">
-                        {victimLink && victim ? (
-                          <a
-                            href={victimLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={`victim tx ${victim}`}
-                            style={{color: "#22d3ee", textDecoration: "none"}}
-                          >
-                            {shortHash(victim)} ↗
-                          </a>
-                        ) : o.victims ? (
-                          shortHash(victim)
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td
-                        className="muted"
-                        style={{maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis"}}
-                        title={o.notes}
-                      >
-                        {o.notes}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!opps.length && (
-                  <tr>
-                    <td colSpan={7} className="muted" style={{textAlign: "center", padding: 16}}>
-                      nothing yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-head">
-            <span>relay payloads delivered</span>
-            <span className="muted">market price of MEV</span>
-          </div>
-          <div style={{maxHeight: 300, overflowY: "auto"}}>
-            <table className="grid">
-              <thead>
-                <tr>
-                  <th>slot</th>
-                  <th>relay</th>
-                  <th style={{textAlign: "right"}}>value ETH</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bids.map((b) => (
-                  <tr key={`${b.relay}-${b.slot}`}>
-                    <td className="muted">{b.slot}</td>
-                    <td>{safeHost(b.relay)}</td>
-                    <td style={{textAlign: "right"}}>{weiToEth(b.valueWei, 4)}</td>
-                  </tr>
+          {/* ── feed + simulations ──────────────────────────────────── */}
+          <Section
+            id="activity"
+            icon="bolt"
+            title="Activity"
+            subtitle="live tape · simulated transactions, newest first"
+            right={
+              <select className="ah-input !w-auto" value={strategyFilter} onChange={(e) => setStrategyFilter(e.target.value)} aria-label="filter by strategy">
+                {["all", "sandwich", "sandwich_v3", "jit", "atomic_arb", "liquidation", "liquidation_compound", "liquidation_morpho", "liquidation_maker", "oracle_frontrun"].map((k) => (
+                  <option key={k} value={k}>{k}</option>
                 ))}
-                {!bids.length && (
-                  <tr>
-                    <td colSpan={3} className="muted" style={{textAlign: "center", padding: 16}}>
-                      no relay data
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              </select>
+            }
+          >
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <div className="panel">
+                <div className="panel-head">
+                  <span className="flex items-center gap-2"><Icon name="bolt" size={14} /> live data feed</span>
+                  <select className="ah-input !w-auto" value={feedFilter} onChange={(e) => setFeedFilter(e.target.value)} aria-label="filter feed by event type">
+                    {["all", "pending", "block", "mev_share_hint", "opportunity", "simulation", "bundle", "relay", "relay_block", "reorg", "alert"].map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                </div>
+                <LiveFeed events={events} filter={feedFilter} chainId={chainId} />
+              </div>
+
+              <div className="panel">
+                <div className="panel-head"><span className="flex items-center gap-2"><Icon name="layers" size={14} /> simulated transaction history</span></div>
+                <div style={{maxHeight: 480, overflowY: "auto"}}>
+                  <table className="grid">
+                    <thead>
+                      <tr>
+                        <th>age</th>
+                        <th>strategy</th>
+                        <th>backend</th>
+                        <th style={{textAlign: "right"}}>gas</th>
+                        <th style={{textAlign: "right"}}>gross</th>
+                        <th style={{textAlign: "right"}}>net ETH</th>
+                        <th>victim tx</th>
+                        <th>result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSims.map((s, i) => {
+                        const victim = s.victims ? s.victims.split(",")[0] : null;
+                        const link = txUrl(chainId, victim);
+                        return (
+                          <tr key={`${s.opportunityId}-${i}`} title={s.notes}>
+                            <td className="muted">{ago(s.createdAtMs)}</td>
+                            <td style={{color: STRATEGY_COLOR[s.strategy]}}>{s.strategy}</td>
+                            <td className="muted">{s.backend}</td>
+                            <td style={{textAlign: "right"}}>{s.gasUsed.toLocaleString()}</td>
+                            <td style={{textAlign: "right"}}>{weiToEth(s.grossWei, 5)}</td>
+                            <td style={{textAlign: "right"}} className={BigInt(s.netWei) >= 0n ? "pos" : "neg"}>{signedEth(s.netWei)}</td>
+                            <td>
+                              {link && victim ? (
+                                <a href={link} target="_blank" rel="noreferrer" title={`victim tx ${victim} — view on the block explorer`} className="no-underline">{shortHash(victim, 4)} ↗</a>
+                              ) : <span className="muted">—</span>}
+                            </td>
+                            <td className={s.success ? "pos" : "muted"}><SimVerdict success={s.success} revertReason={s.revertReason} /></td>
+                          </tr>
+                        );
+                      })}
+                      {!filteredSims.length && <tr><td colSpan={8} className="muted text-center py-8">no simulations yet</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          {/* ── opportunities + relay payloads ──────────────────────── */}
+          <Section id="history" icon="table" title="Simulated transactions & opportunities" subtitle="newest first · plus relay payload prices">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+              <div className="panel xl:col-span-2">
+                <div className="panel-head"><span className="flex items-center gap-2"><Icon name="table" size={14} /> opportunities found</span></div>
+                <div style={{maxHeight: 320, overflowY: "auto"}}>
+                  <table className="grid">
+                    <thead>
+                      <tr>
+                        <th>age</th>
+                        <th>strategy</th>
+                        <th style={{textAlign: "right"}}>expected</th>
+                        <th style={{textAlign: "right"}}>notional</th>
+                        <th>block</th>
+                        <th>victim</th>
+                        <th>notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {opps.map((o) => {
+                        const victim = o.victims ? o.victims.split(",")[0] : null;
+                        const victimLink = txUrl(chainId, victim);
+                        const blockLink = blockUrl(chainId, o.targetBlock);
+                        return (
+                          <tr key={o.id}>
+                            <td className="muted">{ago(o.createdAtMs)}</td>
+                            <td style={{color: STRATEGY_COLOR[o.strategy]}}>{o.strategy}</td>
+                            <td style={{textAlign: "right"}}>{weiToEth(o.expectedWei, 5)}</td>
+                            <td style={{textAlign: "right"}}>{weiToEth(o.notionalWei, 3)}</td>
+                            <td className="muted">
+                              {blockLink ? <a href={blockLink} target="_blank" rel="noreferrer" title="view this block on the explorer">{o.targetBlock}</a> : o.targetBlock}
+                            </td>
+                            <td className="muted">
+                              {victimLink && victim ? <a href={victimLink} target="_blank" rel="noreferrer" title={`victim tx ${victim}`} className="no-underline">{shortHash(victim)} ↗</a> : o.victims ? shortHash(victim) : "—"}
+                            </td>
+                            <td className="muted" style={{maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis"}} title={o.notes}>{o.notes}</td>
+                          </tr>
+                        );
+                      })}
+                      {!opps.length && <tr><td colSpan={7} className="muted text-center py-8">nothing yet</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="panel">
+                <div className="panel-head"><span className="flex items-center gap-2"><Icon name="layers" size={14} /> relay payloads delivered</span></div>
+                <div style={{maxHeight: 320, overflowY: "auto"}}>
+                  <table className="grid">
+                    <thead>
+                      <tr>
+                        <th>slot</th>
+                        <th>relay</th>
+                        <th style={{textAlign: "right"}}>value ETH</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bids.map((b) => (
+                        <tr key={`${b.relay}-${b.slot}`}>
+                          <td className="muted">{b.slot}</td>
+                          <td>{safeHost(b.relay)}</td>
+                          <td style={{textAlign: "right"}}>{weiToEth(b.valueWei, 4)}</td>
+                        </tr>
+                      ))}
+                      {!bids.length && <tr><td colSpan={3} className="muted text-center py-8">no relay data</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="validation" icon="shield" title="Validation — latency & on-chain evidence" subtitle="decision-time simulations vs canonical blocks">
+            <Phase1Panel latency={status?.latency} competition={competition} actualMev={actualMev} executions={executions} reorgs={reorgs} />
+          </Section>
+
+          <Section id="relay" icon="layers" title="Relay — delivered blocks" subtitle="what MEV sold for, block by block" defaultOpen={false}>
+            <RelayBlocksPanel chainId={chainId} />
+          </Section>
+
+          <Section id="funnel" icon="activity" title="Strategy funnel" subtitle="why no opportunities? — with data">
+            <FunnelPanel
+              funnel={status?.stats.funnel ?? null}
+              funnelReplay={status?.stats.funnelReplay ?? null}
+              pendingSeen={status?.stats.pendingSeen ?? 0}
+              hintsSeen={status?.stats.hintsSeen ?? 0}
+              startedAtMs={status?.stats.startedAtMs}
+              chainId={status?.chain.id}
+            />
+          </Section>
+
+          <Section id="risk" icon="shield" title="Risk & strategy controls" subtitle="applies instantly — no restart">
+            <RiskPanel killSwitchTripped={status?.risk.killSwitchTripped} />
+          </Section>
+
+          <Section
+            id="golive"
+            icon="send"
+            title="Production go-live wizard · deploy & arm independently"
+            subtitle="five-card wallet, executor, funding, pre-flight & live controls · docs/GO_LIVE.md"
+            defaultOpen={false}
+          >
+            <div className="grid gap-3">
+              <QualificationReport qualification={status?.qualification} />
+              <EligibilityPanel enabled={status?.strategies} />
+              <GoLivePanel executor={status?.executor ?? ""} armed={status?.liveArmed} chainId={chainId} />
+            </div>
+          </Section>
+
+          <Section id="executor" icon="wallet" title="MevExecutor — on-chain control" subtitle={status ? shortHash(status.executor, 8) : "—"}>
+            <ContractPanel executor={status?.executor ?? ""} chainId={chainId} />
+          </Section>
+
+          <footer className="rounded-2xl border border-[var(--line-soft)] bg-[var(--bg-subtle)] px-4 py-3 text-[11.5px] leading-relaxed text-[var(--muted)]">
+            Broadcasting is disabled by default and stays fail-closed unless every arming, risk, inventory, and strategy qualification gate passes. See{" "}
+            <code>docs/GO_LIVE.md</code> and <code>docs/RISK.md</code>. CoW orders are signed EIP-712 against the canonical CoW settlement contract, verified uid on return, and reconciled to fills — cancelled orders invalidate on-close, not in a cache.
+          </footer>
         </div>
-      </section>
-
-      </Section>
-
-      <Section id="validation" title="Validation — latency & on-chain evidence" subtitle="decision-time simulations vs canonical blocks">
-        <Phase1Panel
-          latency={status?.latency}
-          competition={competition}
-          actualMev={actualMev}
-          executions={executions}
-          reorgs={reorgs}
-        />
-      </Section>
-
-      {/* bloXroute Max Profit relay — delivered blocks + their transactions */}
-      <Section id="relay" title="Relay — delivered blocks" subtitle="what MEV sold for, block by block" defaultOpen={false}>
-        <RelayBlocksPanel chainId={chainId} />
-      </Section>
-
-      {/* strategy funnel — answers "why no opportunities?" with data */}
-      <Section id="funnel" title="Strategy funnel" subtitle="why no opportunities? — with data">
-      <FunnelPanel
-        funnel={status?.stats.funnel ?? null}
-        funnelReplay={status?.stats.funnelReplay ?? null}
-        pendingSeen={status?.stats.pendingSeen ?? 0}
-        hintsSeen={status?.stats.hintsSeen ?? 0}
-        startedAtMs={status?.stats.startedAtMs}
-        chainId={status?.chain.id}
-      />
-
-      </Section>
-
-      {/* risk & strategy controls */}
-      <Section id="risk" title="Risk & strategy controls" subtitle="applies instantly — no restart">
-        <RiskPanel killSwitchTripped={status?.risk.killSwitchTripped} />
-      </Section>
-
-      {/* go-live checklist — deploying MevExecutor (Phase 3 readiness) */}
-      <Section
-        id="golive"
-        title="Production go-live wizard · deploy & arm independently"
-        subtitle="five-card wallet, executor, funding, pre-flight & live controls · docs/GO_LIVE.md"
-        defaultOpen={false}
-      >
-        <div style={{padding: 4, display: "grid", gap: 12}}>
-          <QualificationReport qualification={status?.qualification} />
-          <EligibilityPanel enabled={status?.strategies} />
-          <GoLivePanel executor={status?.executor ?? ""} armed={status?.liveArmed} chainId={chainId} />
-        </div>
-      </Section>
-
-      {/* contract */}
-      <Section id="executor" title="MevExecutor — on-chain control" subtitle={status ? shortHash(status.executor, 8) : "—"}>
-        <ContractPanel executor={status?.executor ?? ""} chainId={chainId} />
-      </Section>
-
-      <footer className="muted" style={{padding: "4px 2px 20px", fontSize: 11}}>
-        Broadcasting is disabled by default and remains fail-closed unless every arming, risk, inventory, and
-        strategy-specific qualification gate passes. See <code>docs/GO_LIVE.md</code> and <code>docs/RISK.md</code>.
-      </footer>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
-/**
- * The `result` cell of the simulations table.
- *
- * Three outcomes, not two. A plain revert and an *uncertified* result both
- * used to render as grey prose in a `nowrap` cell, which conflated the two
- * cases that most need telling apart:
- *
- *   - "no edge" / a revert reason: the simulator looked and there was nothing
- *     there, or the bundle would genuinely have failed.
- *   - "uncertified": the bundle may well have been profitable, but the profit
- *     landed in a token the bot could not price against ETH gas at the pinned
- *     fork block, so it refuses to *claim* a number. This is fail-closed
- *     accounting, and it is usually fixed by configuration
- *     (`TOKEN_VALUATION=true`) rather than by strategy work.
- *
- * Reading the second as the first understates the strategy. The full reason
- * stays available on hover; only the label is short, because these strings run
- * to a full sentence and the cell is `nowrap`.
- */
+function Card({children, xl, className}: {children: React.ReactNode; xl?: boolean; className?: string}) {
+  return <div className={`panel min-w-0 ${className ?? ""}`}>{children}</div>;
+}
+
+function Banner({tone, icon, children}: {tone: "warn" | "neg"; icon: string; children: React.ReactNode}) {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2.5 rounded-xl border px-4 py-3 text-[12.5px]"
+      style={{borderColor: `var(--${tone})`, background: `var(--${tone}-soft)`, color: `var(--${tone})`}}
+    >
+      <Icon name={icon} size={15} className="mt-0.5 flex-none" />
+      <span>{children}</span>
+    </div>
+  );
+}
+
 function SimVerdict({success, revertReason}: {success: boolean; revertReason: string | null}) {
   if (success) return <>profitable</>;
   const reason = revertReason ?? "no edge";
   if (reason.startsWith("uncertified accounting")) {
-    return (
-      <span style={{color: "var(--amber)"}} title={reason}>
-        uncertified
-      </span>
-    );
+    return <span style={{color: "var(--warn)"}} title={reason}>uncertified</span>;
   }
-  return (
-    <span title={reason.length > 40 ? reason : undefined}>
-      {reason.length > 40 ? `${reason.slice(0, 39)}…` : reason}
-    </span>
-  );
+  return <span title={reason.length > 40 ? reason : undefined}>{reason.length > 40 ? `${reason.slice(0, 39)}…` : reason}</span>;
 }
 
 function QualificationReport({qualification}: {qualification: StatusResponse["qualification"]}) {
   const rows = qualification?.strategies ?? [];
   const comparisonLabel = qualification?.comparisonBackend === "sequencer" ? "independent state" : "relay";
   return (
-    <div className="panel" style={{padding: 10}}>
+    <div className="panel">
       <div className="panel-head">
         <span>
           strategy qualification
-          {qualification?.comparisonBackend && (
-            <span
-              className="muted"
-              style={{marginLeft: 8, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em"}}
-              title="the independent second opinion the accuracy numbers below are graded against"
-            >
-              backend: {qualification.comparisonBackend}
-            </span>
-          )}
+          {qualification?.comparisonBackend && <span className="muted ml-2">backend: {qualification.comparisonBackend}</span>}
         </span>
-        <span className={qualification?.pass ? "pos" : "muted"}>
-          {qualification
-            ? `${qualification.elapsedHours}/${qualification.requiredHours}h · max gap ${qualification.maximumObservationGapSecs}s`
-            : "waiting for bot"}
+        <span className={qualification?.pass ? "pos" : "muted"} style={{fontSize: 12}}>
+          {qualification ? `${qualification.elapsedHours}/${qualification.requiredHours}h · max gap ${qualification.maximumObservationGapSecs}s` : "waiting for bot"}
         </span>
       </div>
       <table className="grid">
@@ -894,9 +592,7 @@ function QualificationReport({qualification}: {qualification: StatusResponse["qu
           {rows.map((row) => (
             <tr key={row.strategy} title={row.reasons.join("; ")}>
               <td>{STRATEGY_LABEL[row.strategy] ?? row.strategy}</td>
-              <td className={row.verdict === "PASS" ? "pos" : row.verdict === "FAIL" ? "neg" : "muted"}>
-                {row.verdict}
-              </td>
+              <td className={row.verdict === "PASS" ? "pos" : row.verdict === "FAIL" ? "neg" : "muted"}>{row.verdict}</td>
               <td style={{textAlign: "right"}}>{row.forkSamples}</td>
               <td style={{textAlign: "right"}}>{row.independentComparisons ?? row.relayComparisons}</td>
               <td style={{textAlign: "right"}}>{row.actualComparisons}</td>
@@ -904,34 +600,16 @@ function QualificationReport({qualification}: {qualification: StatusResponse["qu
               <td style={{textAlign: "right"}}>{(row.actualAccuracyBps / 100).toFixed(1)}%</td>
             </tr>
           ))}
-          {!rows.length && (
-            <tr>
-              <td colSpan={7} className="muted" style={{textAlign: "center", padding: 10}}>
-                no qualification report yet
-              </td>
-            </tr>
-          )}
+          {!rows.length && <tr><td colSpan={7} className="muted text-center py-6">no qualification report yet</td></tr>}
         </tbody>
       </table>
       {(qualification?.reasons ?? []).map((reason) => (
-        <div key={reason} className="muted" style={{fontSize: 10, marginTop: 4}}>
-          • {reason}
-        </div>
+        <div key={reason} className="muted px-4 pb-3 text-[11px]">• {reason}</div>
       ))}
     </div>
   );
 }
 
-/**
- * Return `prev` when it is structurally equal to `next`, so React can bail out
- * of the update and memoized children keep their previous render.
- *
- * The payloads here are small (≤250 rows) and already came off the wire as
- * JSON, so re-serialising is far cheaper than the cascade of re-renders it
- * prevents. This is deliberately a value comparison rather than a shallow one:
- * the arrays are rebuilt by `JSON.parse` every poll, so every element is a new
- * object and a shallow check would never match.
- */
 function keepIfSame<T>(prev: T, next: T): T {
   try {
     return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
@@ -948,41 +626,11 @@ function safeHost(url: string): string {
   }
 }
 
-function HeadStat({label, value, tone}: {label: string; value: string; tone?: string}) {
+function HeadStat({label, value, warn}: {label: string; value: string; warn?: boolean}) {
   return (
-    <div style={{display: "flex", flexDirection: "column"}}>
-      <span className="muted" style={{fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em"}}>
-        {label}
-      </span>
-      <span className={tone}>{value}</span>
+    <div className="flex flex-col items-end">
+      <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{label}</span>
+      <span className="text-[12.5px] font-semibold tabular-nums" style={{color: warn ? "var(--danger)" : "var(--text)"}}>{value}</span>
     </div>
   );
 }
-
-function Card({title, value, sub, tone}: {title: string; value: string; sub?: string; tone?: string}) {
-  return (
-    <div className="panel" style={{padding: "10px 12px"}}>
-      <div className="muted" style={{fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em"}}>
-        {title}
-      </div>
-      <div className={tone} style={{fontSize: 20, marginTop: 4}}>
-        {value}
-      </div>
-      {sub && (
-        <div className="muted" style={{fontSize: 10, marginTop: 2}}>
-          {sub}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const selectStyle: React.CSSProperties = {
-  background: "#070b11",
-  border: "1px solid #1b2532",
-  borderRadius: 4,
-  color: "#d7e2f0",
-  fontFamily: "inherit",
-  fontSize: 11,
-  padding: "2px 6px",
-};

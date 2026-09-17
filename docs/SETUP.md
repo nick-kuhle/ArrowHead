@@ -1,6 +1,6 @@
 # Setup
 
-End-to-end walkthrough for getting the JerseyMikes pipeline running locally:
+End-to-end walkthrough for getting the ArrowHead pipeline running locally:
 the **Rust** searcher/bot, the **Foundry** contracts (and the `anvil` simulation
 engine), and the **Node/Next.js** console. Every command below is also wrapped by
 a `make` target — see the [Quick reference](#quick-reference) at the bottom.
@@ -79,7 +79,7 @@ Always clone with submodules — `contracts/lib/forge-std` is a submodule and
 `forge build` will fail without it:
 
 ```bash
-git clone --recurse-submodules <this repo> && cd JerseyMikes
+git clone --recurse-submodules <this repo> && cd ArrowHead
 # already cloned without submodules? recover with:
 git submodule update --init --recursive
 ```
@@ -122,7 +122,7 @@ the engine is single-chain by design. The chain registry in the bot
 
 ```bash
 cp .env.example.base .env.base
-$EDITOR .env.base     # Base RPC URLs + DB_PATH=/var/lib/jerseymikes/base.sqlite
+$EDITOR .env.base     # Base RPC URLs + DB_PATH=/var/lib/arrowhead/base.sqlite
                       # + API_BIND=127.0.0.1:8081
 mev-bot --env-file .env.base doctor    # must show: chain id "0x2105" (profile 8453)
 ```

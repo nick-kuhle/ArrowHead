@@ -293,8 +293,8 @@ export default function ContractPanel({
         </button>
         {address ? (
           <span style={{display: "flex", gap: 8, alignItems: "center"}}>
-            <span className="badge" style={{color: "#22d3ee"}} title={activeName ?? undefined}>
-              <span className="dot" style={{background: "#22d3ee"}} /> {shortHash(address, 6)}
+            <span className="badge" style={{color: "var(--cyan)"}} title={activeName ?? undefined}>
+              <span className="dot" style={{background: "var(--cyan)"}} /> {shortHash(address, 6)}
             </span>
             <button onClick={() => void disconnect()} style={btnStyle}>
               disconnect
@@ -308,7 +308,7 @@ export default function ContractPanel({
       </div>
 
       {address && wrongChain && (
-        <div className="muted" style={{fontSize: 11, color: "#ff5c5c"}}>
+        <div className="muted" style={{fontSize: 11, color: "var(--danger)"}}>
           your wallet is on chain {walletChain}; the executor being read is on chain {chainId}. A
           write from the wrong chain will fail — switch your wallet first (header ▾).
         </div>
@@ -433,7 +433,7 @@ export default function ContractPanel({
           {txLink && (
             <>
               {" "}
-              <a href={txLink} target="_blank" rel="noreferrer" style={{color: "#22d3ee"}}>
+              <a href={txLink} target="_blank" rel="noreferrer" style={{color: "var(--cyan)"}}>
                 view on {explorerName(chainId ?? walletChain ?? undefined)} ↗
               </a>
             </>
@@ -467,7 +467,7 @@ function ExplorerLink({
       </span>
     );
   return (
-    <a href={url} target="_blank" rel="noreferrer" style={{color: "#22d3ee", textDecoration: "none"}} title={addr}>
+    <a href={url} target="_blank" rel="noreferrer" style={{color: "var(--cyan)", textDecoration: "none"}} title={addr}>
       {children}
     </a>
   );
@@ -475,7 +475,7 @@ function ExplorerLink({
 
 function Field({label, value, tone}: {label: string; value: React.ReactNode; tone?: string}) {
   return (
-    <div style={{background: "#0e141d", border: "1px solid #1b2532", borderRadius: 4, padding: "6px 8px"}}>
+    <div style={{background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: 4, padding: "6px 8px"}}>
       <div className="muted" style={{fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em"}}>
         {label}
       </div>
@@ -485,10 +485,10 @@ function Field({label, value, tone}: {label: string; value: React.ReactNode; ton
 }
 
 const inputStyle: React.CSSProperties = {
-  background: "#070b11",
-  border: "1px solid #1b2532",
+  background: "var(--panel)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "5px 8px",
   minWidth: 380,
   fontFamily: "inherit",
@@ -496,10 +496,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const btnStyle: React.CSSProperties = {
-  background: "#111a25",
-  border: "1px solid #24334a",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "5px 10px",
   cursor: "pointer",
   fontFamily: "inherit",

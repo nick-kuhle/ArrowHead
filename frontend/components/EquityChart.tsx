@@ -17,7 +17,7 @@ function EquityChart({series}: {series: SeriesPoint[]}) {
   }, [series]);
 
   const last = data.length ? data[data.length - 1].eth : 0;
-  const color = last >= 0 ? "#35d07f" : "#ff5c5c";
+  const color = last >= 0 ? "var(--success)" : "var(--danger)";
 
   if (!data.length) {
     return <div className="muted" style={{padding: 24, textAlign: "center"}}>no simulations yet</div>;
@@ -27,16 +27,16 @@ function EquityChart({series}: {series: SeriesPoint[]}) {
     <div style={{height: 220, padding: "12px 8px 0 0"}}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{top: 4, right: 12, bottom: 4, left: 4}}>
-          <CartesianGrid stroke="#141c26" vertical={false} />
+          <CartesianGrid stroke="var(--line-soft)" vertical={false} />
           <XAxis
             dataKey="block"
-            tick={{fill: "#6b7c93", fontSize: 10}}
+            tick={{fill: "var(--muted)", fontSize: 10}}
             tickLine={false}
-            axisLine={{stroke: "#1b2532"}}
+            axisLine={{stroke: "var(--line)"}}
             minTickGap={40}
           />
           <YAxis
-            tick={{fill: "#6b7c93", fontSize: 10}}
+            tick={{fill: "var(--muted)", fontSize: 10}}
             tickLine={false}
             axisLine={false}
             width={58}
@@ -44,13 +44,13 @@ function EquityChart({series}: {series: SeriesPoint[]}) {
           />
           <Tooltip
             contentStyle={{
-              background: "#0b1017",
-              border: "1px solid #1b2532",
+              background: "var(--panel)",
+              border: "1px solid var(--line)",
               borderRadius: 4,
               fontSize: 11,
               fontFamily: "ui-monospace, monospace",
             }}
-            labelStyle={{color: "#6b7c93"}}
+            labelStyle={{color: "var(--muted)"}}
             formatter={(value, name) => {
               const numeric = Number(value ?? 0);
               return [
@@ -59,7 +59,7 @@ function EquityChart({series}: {series: SeriesPoint[]}) {
               ];
             }}
           />
-          <ReferenceLine y={0} stroke="#2a3646" strokeDasharray="3 3" />
+          <ReferenceLine y={0} stroke="var(--muted)" strokeDasharray="3 3" />
           <Line type="monotone" dataKey="eth" stroke={color} strokeWidth={1.6} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>

@@ -101,7 +101,7 @@ Never use a `NEXT_PUBLIC_*` variable for a secret.
 The SQLite database is qualification and settlement evidence. Do not replace
 it during deployment.
 
-- systemd: set `DB_PATH=/var/lib/jerseymikes/mev.sqlite` and back up that
+- systemd: set `DB_PATH=/var/lib/arrowhead/mev.sqlite` and back up that
   directory.
 - Docker: preserve the `bot-data` named volume.
 

@@ -142,7 +142,7 @@ export default function RelayBlocksPanel({chainId}: {chainId?: number}) {
                             target="_blank"
                             rel="noreferrer"
                             title={`${t.hash} — view on the explorer`}
-                            style={{color: "#22d3ee", textDecoration: "none"}}
+                            style={{color: "var(--cyan)", textDecoration: "none"}}
                           >
                             {shortHash(t.hash, 10)} ↗
                           </a>

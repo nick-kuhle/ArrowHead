@@ -1,113 +1,275 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────
+   ArrowHead design system — hybrid light/dark.
+   Tokens live as CSS variables: `:root` = light, `[data-theme=dark]` = dark,
+   and when no attribute is set we follow the OS via prefers-color-scheme.
+   The toggle writes `data-theme` on <html> (see ThemeToggle + the inline
+   boot script in layout.tsx).
+   ───────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --bg: #05070a;
-  --panel: #0b1017;
-  --panel-2: #0e141d;
-  --line: #1b2532;
-  --text: #d7e2f0;
-  --muted: #6b7c93;
-  --green: #35d07f;
-  --red: #ff5c5c;
-  --amber: #f5b544;
+  color-scheme: light;
+
+  --bg: #f5f7fa;
+  --bg-subtle: #eef1f6;
+  --panel: #ffffff;
+  --panel-2: #f2f5f9;
+  --line: #e2e7ef;
+  --line-soft: #e9edf4;
+  --text: #131a24;
+  --muted: #5a6474;
+  --input-bg: #ffffff;
+  --shadow: 0 1px 2px rgba(19, 26, 36, 0.05), 0 6px 24px rgba(19, 26, 36, 0.05);
+
+  --accent: #0e9488;
+  --accent-strong: #0f766e;
+  --accent-soft: rgba(14, 148, 136, 0.1);
+  --success: #0a8f5f;
+  --success-soft: rgba(10, 143, 95, 0.12);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --warn: #b45309;
+  --warn-soft: rgba(180, 83, 9, 0.12);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, 0.1);
+  --cyan: #0e9488;
+  --violet: #7c3aed;
+
+  --scroll-thumb: #c3ccd8;
+  --scroll-track: transparent;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #080b11;
+  --bg-subtle: #0d1219;
+  --panel: #10151f;
+  --panel-2: #151b27;
+  --line: #1e2836;
+  --line-soft: #192230;
+  --text: #dbe4ef;
+  --muted: #7c8ba0;
+  --input-bg: #0b1018;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.35);
+
+  --accent: #2dd4bf;
+  --accent-strong: #5eead4;
+  --accent-soft: rgba(45, 212, 191, 0.12);
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.12);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.12);
   --cyan: #22d3ee;
+  --violet: #a78bfa;
+
+  --scroll-thumb: #26303f;
+  --scroll-track: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg: #080b11;
+    --bg-subtle: #0d1219;
+    --panel: #10151f;
+    --panel-2: #151b27;
+    --line: #1e2836;
+    --line-soft: #192230;
+    --text: #dbe4ef;
+    --muted: #7c8ba0;
+    --input-bg: #0b1018;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 32px rgba(0, 0, 0, 0.35);
+
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --accent-soft: rgba(45, 212, 191, 0.12);
+    --success: #34d399;
+    --success-soft: rgba(52, 211, 153, 0.12);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.12);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, 0.12);
+    --info: #60a5fa;
+    --info-soft: rgba(96, 165, 250, 0.12);
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+
+    --scroll-thumb: #26303f;
+    --scroll-track: transparent;
+  }
+}
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #223 transparent;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
 }
-
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scroll-track);
 }
 *::-webkit-scrollbar-thumb {
-  background: #1d2634;
-  border-radius: 4px;
+  background: var(--scroll-thumb);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
+
+/* ── type helpers ──────────────────────────────────────────────────────── */
+
+.mono,
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.muted {
+  color: var(--muted);
+}
+.pos {
+  color: var(--success);
+}
+.neg {
+  color: var(--danger);
+}
+a {
+  color: var(--accent);
+}
+a:hover {
+  color: var(--accent-strong);
+}
+
+/* ── surfaces: `.panel` is the shared card primitive (used by every panel) ─ */
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  animation: panel-in 0.35s ease-out 1;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  animation: panel-in 0.3s ease-out 1;
 }
 
 .panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 10px;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.pos {
-  color: var(--green);
+.panel-head .muted {
+  font-size: 11px;
+  font-weight: 450;
+  letter-spacing: 0.02em;
 }
-.neg {
-  color: var(--red);
-}
-.muted {
-  color: var(--muted);
-}
+
+/* ── data tables ───────────────────────────────────────────────────────── */
 
 table.grid {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px;
 }
+
 table.grid th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 10.5px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line);
+  letter-spacing: 0.07em;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line-soft);
   position: sticky;
   top: 0;
   background: var(--panel);
+  z-index: 1;
 }
+
 table.grid td {
-  padding: 5px 10px;
-  border-bottom: 1px solid #121a24;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line-soft);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
+
 table.grid tr:hover td {
   background: var(--panel-2);
 }
 
+/* ── badges + dots ─────────────────────────────────────────────────────── */
+
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 10px;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   border: 1px solid currentColor;
+  background: var(--panel-2);
+}
+
+.badge-soft {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   display: inline-block;
+  flex: none;
 }
 
 @keyframes pulse {
@@ -122,34 +284,41 @@ table.grid tr:hover td {
 .live {
   animation: pulse 2s ease-in-out infinite;
 }
-
-/* Jump-nav + collapsible sections: smooth jumps, and headings land below
-   the sticky nav instead of underneath it. */
-html {
-  scroll-behavior: smooth;
+.dot-live {
+  animation: halo 2.4s ease-in-out infinite;
 }
 
-/* ── ArrowHead brand ───────────────────────────────────────────────────── */
+@keyframes halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(52, 211, 153, 0);
+  }
+}
+
+/* ── brand ─────────────────────────────────────────────────────────────── */
 
 .brand {
-  background: linear-gradient(90deg, #d7e2f0 0%, #22d3ee 55%, #35d07f 100%);
+  background: linear-gradient(96deg, var(--text) 0%, var(--accent) 55%, var(--success) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  letter-spacing: 0.06em;
-  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-weight: 800;
 }
 
 .brand-accent {
-  color: #22d3ee;
+  color: var(--accent);
 }
 
-/* ── panels fade in once — no layout shift, just arrival ───────────────── */
+/* ── motion ────────────────────────────────────────────────────────────── */
 
 @keyframes panel-in {
   from {
     opacity: 0;
-    transform: translateY(3px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -157,11 +326,9 @@ html {
   }
 }
 
-/* ── live feed rows land with a soft glow just above the fold ─────────── */
-
 @keyframes event-in {
   from {
-    background: rgba(34, 211, 238, 0.12);
+    background: var(--accent-soft);
   }
   to {
     background: transparent;
@@ -172,16 +339,45 @@ html {
   animation: event-in 1.8s ease-out 1;
 }
 
-/* live-status dots: a slow breathing halo so "live" reads at a glance */
-@keyframes halo {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(53, 208, 127, 0.45);
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
   }
-  50% {
-    box-shadow: 0 0 0 4px rgba(53, 208, 127, 0);
+  .panel {
+    animation: none;
+  }
+  .table-row-anim,
+  .dot-live {
+    animation: none;
   }
 }
-.dot-live {
-  animation: halo 2.4s ease-in-out infinite;
+
+/* ── form controls (shared by the new primitives) ──────────────────────── */
+
+.ah-input,
+select.ah-input {
+  background: var(--input-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  min-width: 0;
+  width: 100%;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.ah-input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.ah-input:focus-visible,
+select.ah-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ah-input[data-invalid="true"] {
+  border-color: var(--danger);
 }

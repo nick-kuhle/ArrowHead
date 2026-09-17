@@ -4,7 +4,7 @@
 > that is not the current build. Use [`SIM_TO_LIVE.md`](SIM_TO_LIVE.md) and
 > [`ARCHITECTURE.md`](ARCHITECTURE.md) for current execution behavior.
 
-**Audience:** the dev teams picking up Phase 2 of JerseyMikes.
+**Audience:** the dev teams picking up Phase 2 of ArrowHead.
 **What this is:** the consolidation of the former `PHASE_2_DESIGN.md` (the
 engineering spec) and `PHASE_2_REVIEW.md` (the maintainer review of that spec)
 into one actionable work order, reconciled against the actual state of the

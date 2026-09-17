@@ -62,20 +62,20 @@ ssh -N -L 8080:127.0.0.1:8080 user@host   # then use http://127.0.0.1:8080
 ## systemd
 
 ```bash
-sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin jerseymikes
-sudo install -d -o jerseymikes -g jerseymikes -m 0750 \
-  /opt/jerseymikes /opt/jerseymikes/frontend /var/lib/jerseymikes
-sudo install -d -o root -g jerseymikes -m 0750 /etc/jerseymikes
+sudo useradd --system --home /nonexistent --shell /usr/sbin/nologin arrowhead
+sudo install -d -o arrowhead -g arrowhead -m 0750 \
+  /opt/arrowhead /opt/arrowhead/frontend /var/lib/arrowhead
+sudo install -d -o root -g arrowhead -m 0750 /etc/arrowhead
 
 # Build first: make bot-build front-build. Then install the bot binary and the
 # complete production frontend (package files, node_modules and .next).
-sudo install -o root -g root -m 0755 bot/target/release/mev-bot /opt/jerseymikes/mev-bot
-sudo cp -a frontend/. /opt/jerseymikes/frontend/
-sudo chown -R root:root /opt/jerseymikes/frontend
-sudo install -o root -g jerseymikes -m 0640 .env /etc/jerseymikes/env
-# In /etc/jerseymikes/env use DB_PATH=/var/lib/jerseymikes/mev.sqlite.
+sudo install -o root -g root -m 0755 bot/target/release/mev-bot /opt/arrowhead/mev-bot
+sudo cp -a frontend/. /opt/arrowhead/frontend/
+sudo chown -R root:root /opt/arrowhead/frontend
+sudo install -o root -g arrowhead -m 0640 .env /etc/arrowhead/env
+# In /etc/arrowhead/env use DB_PATH=/var/lib/arrowhead/mev.sqlite.
 sudo install -o root -g root -m 0755 "$(command -v anvil)" /usr/local/bin/anvil
-sudo install -o root -g root -m 0755 deploy/backup-db.sh /opt/jerseymikes/backup-db.sh
+sudo install -o root -g root -m 0755 deploy/backup-db.sh /opt/arrowhead/backup-db.sh
 sudo cp deploy/systemd/*.service deploy/systemd/*.timer /etc/systemd/system/
 sudo systemd-analyze verify /etc/systemd/system/mev-bot*.service \
   /etc/systemd/system/mev-db-backup.service
@@ -84,9 +84,9 @@ sudo systemctl enable --now mev-bot mev-bot-console mev-db-backup.timer
 journalctl -u mev-bot -f
 ```
 
-The units run as the unprivileged `jerseymikes` user with a read-only system,
+The units run as the unprivileged `arrowhead` user with a read-only system,
 private temporary/devices namespaces, no new privileges, and only
-`/var/lib/jerseymikes` writable by the bot. Keep the environment file mode
+`/var/lib/arrowhead` writable by the bot. Keep the environment file mode
 `0640` because it holds both signing keys. `Restart=on-failure` does not bypass
 startup nonce recovery; unresolved private bundles are cancelled or keep nonce
 reuse blocked through target expiry.
@@ -100,13 +100,13 @@ slug:
 
 | Chain | Unit | Env file | Database | Port |
 | --- | --- | --- | --- | --- |
-| Ethereum | `mev-bot@ethereum` (or the legacy non-templated `mev-bot`) | `/etc/jerseymikes/ethereum.env` | `/var/lib/jerseymikes/ethereum.sqlite` | `:8080` |
-| Base | `mev-bot@base` | `/etc/jerseymikes/base.env` | `/var/lib/jerseymikes/base.sqlite` | `:8081` |
+| Ethereum | `mev-bot@ethereum` (or the legacy non-templated `mev-bot`) | `/etc/arrowhead/ethereum.env` | `/var/lib/arrowhead/ethereum.sqlite` | `:8080` |
+| Base | `mev-bot@base` | `/etc/arrowhead/base.env` | `/var/lib/arrowhead/base.sqlite` | `:8081` |
 
 ```bash
 # per-chain env files — base.env starts from .env.example.base
-sudo install -o root -g jerseymikes -m 0640 .env /etc/jerseymikes/ethereum.env
-sudo install -o root -g jerseymikes -m 0640 .env.base /etc/jerseymikes/base.env
+sudo install -o root -g arrowhead -m 0640 .env /etc/arrowhead/ethereum.env
+sudo install -o root -g arrowhead -m 0640 .env.base /etc/arrowhead/base.env
 
 # templated units: one unit + one backup timer per chain
 sudo systemctl daemon-reload
@@ -118,7 +118,7 @@ Per-chain isolation is **by construction**: the qualification clock, the
 `LIVE_SMOKE_MAX` budget, the drawdown kill switch and the nonce lane all live
 in each instance's own database / process, so arming Base can never affect
 Ethereum and vice versa. Backups land per chain under
-`/var/lib/jerseymikes/backups/<chain>/`.
+`/var/lib/arrowhead/backups/<chain>/`.
 
 Sequencer chains use a different transport and evidence model (see
 `.env.example.base`):
@@ -173,7 +173,7 @@ writer. Never `cp` the `mev.sqlite`/`-wal` files of a running bot.
 
 * `sqlite3` must be installed on the host (`apt install sqlite3`); the backup
   unit fails loudly when it is missing.
-* Snapshots land in `/var/lib/jerseymikes/backups/quarter/` (newest 96 kept —
+* Snapshots land in `/var/lib/arrowhead/backups/quarter/` (newest 96 kept —
   24 h at 15-minute cadence) with one per UTC day promoted to
   `backups/daily/` (newest 7 kept). Every snapshot passes
   `PRAGMA integrity_check` before it is trusted.
@@ -228,7 +228,7 @@ the webhook). Tunables live in `.env` — see the `ALERTING` section of
 
 ```yaml
 scrape_configs:
-  - job_name: jerseymikes
+  - job_name: arrowhead
     scrape_interval: 15s
     static_configs:
       - targets: ["your-host:8080"]

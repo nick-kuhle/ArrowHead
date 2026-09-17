@@ -61,7 +61,7 @@ liquidations, `oracle_frontrun`) are never sent. Do not flip
 the database.
 
 **Required code.** This page assumes the live-smoke build
-([PR #38](https://github.com/nick-kuhle/JerseyMikes/pull/38) —
+([PR #38](https://github.com/nick-kuhle/ArrowHead/pull/38) —
 `LIVE_SMOKE_MAX`, searcher-nonce pin on the anvil fork). If you are still
 on `main` from PR #37 only, `LIVE_SMOKE_MAX` does not exist and nothing
 will send without a seven-day `PASS`. Merge #38 first.
@@ -114,12 +114,12 @@ Three keys, three trust domains. Mixing any two is a stop.
       `API_AUTH_TOKEN=$(openssl rand -hex 32)` is set. The bot refuses to
       start on a routable bind without a token.
 - [ ] `DB_PATH` points at a **persistent** file you will not delete
-      (`/var/lib/jerseymikes/mev.sqlite` in production). The smoke counter
+      (`/var/lib/arrowhead/mev.sqlite` in production). The smoke counter
       **and** the qualification clock live here.
 - [ ] No ghost names in the env file. These are rejected at boot:
 
   ```bash
-  grep -nE '_(ETH|GWEI)=|BUILDER_SHARE' .env /etc/jerseymikes/env
+  grep -nE '_(ETH|GWEI)=|BUILDER_SHARE' .env /etc/arrowhead/env
   # expect no output
   ```
 
@@ -159,7 +159,7 @@ turn it on later from the dashboard; you restart.
 ## 4. Operator `.env` for the burst
 
 These are **not** repository defaults. Put them in the host env
-(`/etc/jerseymikes/env` or the process `.env`) and restart.
+(`/etc/arrowhead/env` or the process `.env`) and restart.
 
 ```ini
 # --- required plumbing ---
@@ -169,7 +169,7 @@ EXECUTOR_ADDRESS=0x<this-revision>
 SEARCHER_PRIVATE_KEY=0x<funded searcher>
 FLASHBOTS_SIGNER_KEY=0x<unfunded reputation key>
 BUNDLE_RELAY_URLS=https://rpc.titanbuilder.xyz,https://rpc.quasar.win,https://rpc.eurekabuilder.xyz,https://relay.flashbots.net
-DB_PATH=/var/lib/jerseymikes/mev.sqlite
+DB_PATH=/var/lib/arrowhead/mev.sqlite
 API_BIND=127.0.0.1:8080
 # API_AUTH_TOKEN=           # required only if API_BIND is not loopback
 

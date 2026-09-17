@@ -139,9 +139,9 @@ function WizardCard({number, title, state, children}: {number: string; title: st
 function Check({label, ok}: {label: string; ok: boolean}) { return <span className={ok ? "good" : "warn"} style={{fontSize: 11}}>{label}: {ok ? "ok" : "pending"}</span>; }
 const toneColor = (tone: "info" | "good" | "bad" | "warn") => tone === "good" ? "var(--green)" : tone === "bad" ? "var(--red)" : tone === "warn" ? "var(--amber)" : "var(--cyan)";
 const rowStyle: CSSProperties = {display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap"};
-const buttonStyle: CSSProperties = {background: "#111a25", border: "1px solid #24334a", borderRadius: 4, color: "#d7e2f0", padding: "4px 9px", cursor: "pointer", fontFamily: "inherit", fontSize: 11};
-const inputStyle: CSSProperties = {...buttonStyle, background: "#070b11", minWidth: 220, flex: "1 1 220px"};
+const buttonStyle: CSSProperties = {background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: 4, color: "var(--text)", padding: "4px 9px", cursor: "pointer", fontFamily: "inherit", fontSize: 11};
+const inputStyle: CSSProperties = {...buttonStyle, background: "var(--panel)", minWidth: 220, flex: "1 1 220px"};
 const smallInput: CSSProperties = {...inputStyle, minWidth: 72, width: 100, flex: "0 0 auto"};
-const preStyle: CSSProperties = {background: "#070b11", color: "var(--cyan)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, margin: 0, overflowX: "auto", fontSize: 10};
+const preStyle: CSSProperties = {background: "var(--panel)", color: "var(--cyan)", border: "1px solid var(--line)", borderRadius: 4, padding: 8, margin: 0, overflowX: "auto", fontSize: 10};
 const noticeStyle: CSSProperties = {padding: "7px 10px", border: "1px solid", borderRadius: 4, fontSize: 11};
 const dismiss: CSSProperties = {float: "right", marginLeft: 12, background: "transparent", border: 0, color: "inherit", cursor: "pointer"};

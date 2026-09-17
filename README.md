@@ -109,7 +109,7 @@ make/                   build + verify glue
 
 ## License
 
-MIT. Portions derived from [JerseyMikes](https://github.com/nick-kuhle/JerseyMikes)
+MIT. Portions derived from [ArrowHead](https://github.com/nick-kuhle/ArrowHead)
 © 2026 nick-kuhle.
 
 ---

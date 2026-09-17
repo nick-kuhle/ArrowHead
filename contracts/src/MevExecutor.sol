@@ -60,8 +60,8 @@ contract MevExecutor is IFlashLoanRecipient {
     // Transient-storage (EIP-1153) guard slots.
     //
     // These are arbitrary fixed constants, not hashes — an earlier comment
-    // described them as `keccak256("jerseymikes.…")`, which they are not
-    // (verified: keccak256("jerseymikes.reentrancy.guard") is
+    // described them as `keccak256("arrowhead.…")`, which they are not
+    // (verified: keccak256("arrowhead.reentrancy.guard") is
     // 0x0217913e…3090, not the value below). The values are left byte-for-byte
     // unchanged because they are already correct for their purpose and
     // changing them would alter the runtime bytecode for no benefit; only the

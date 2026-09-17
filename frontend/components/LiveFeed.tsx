@@ -180,17 +180,17 @@ function label(e: FeedEvent): string {
 function kindColor(e: FeedEvent): string {
   switch (e.kind) {
     case "block":
-      return "#22d3ee";
+      return "var(--cyan)";
     case "pending":
-      return "#6b7c93";
+      return "var(--muted)";
     case "mev_share_hint":
       return "#a855f7";
     case "opportunity":
-      return STRATEGY_COLOR[e.strategy] ?? "#f5b544";
+      return STRATEGY_COLOR[e.strategy] ?? "var(--warn)";
     case "simulation":
-      return BigInt(e.net_profit_wei) > 0n ? "#35d07f" : "#ff5c5c";
+      return BigInt(e.net_profit_wei) > 0n ? "var(--success)" : "var(--danger)";
     case "bundle":
-      return "#f5b544";
+      return "var(--warn)";
     case "relay":
       return "#4f8bff";
     case "relay_block":
@@ -198,7 +198,7 @@ function kindColor(e: FeedEvent): string {
     case "alert":
       return "var(--amber)";
     case "reorg":
-      return "#ff5c5c";
+      return "var(--danger)";
   }
 }
 
@@ -212,7 +212,7 @@ function detail(e: FeedEvent, chainId?: number) {
         </span>
       );
     return (
-      <a href={url} target="_blank" rel="noreferrer" title={`${hash} — view on the explorer`} style={{color: "#22d3ee", textDecoration: "none"}}>
+      <a href={url} target="_blank" rel="noreferrer" title={`${hash} — view on the explorer`} style={{color: "var(--cyan)", textDecoration: "none"}}>
         {label ?? shortHash(hash)} ↗
       </a>
     );
@@ -305,7 +305,7 @@ function detail(e: FeedEvent, chainId?: number) {
     case "alert": {
       const ev = e as unknown as {severity?: string; rule?: string; message?: string; active?: boolean};
       return (
-        <span style={{color: ev.active ? (ev.severity === "critical" ? "#ff5c5c" : "#f5b544") : undefined}}>
+        <span style={{color: ev.active ? (ev.severity === "critical" ? "var(--danger)" : "var(--warn)") : undefined}}>
           {ev.active ? "⚠" : "✓"} {ev.severity} · {ev.rule} — {ev.message}
         </span>
       );

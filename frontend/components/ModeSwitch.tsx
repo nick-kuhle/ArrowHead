@@ -79,10 +79,10 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
       <span
         className="badge"
         style={{
-          color: live ? "#ff5c5c" : "#35d07f",
+          color: live ? "var(--danger)" : "var(--success)",
           cursor: "pointer",
           userSelect: "none",
-          border: "1px solid #24334a",
+          border: "1px solid var(--line)",
         }}
         onClick={onToggle}
         title={
@@ -93,7 +93,7 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
               : "simulation only — this bot was not started armed for live execution; click for the arming steps"
         }
       >
-        <span className="dot" style={{background: live ? "#ff5c5c" : "#35d07f"}} />
+        <span className="dot" style={{background: live ? "var(--danger)" : "var(--success)"}} />
         {live ? "LIVE EXECUTION" : "SIMULATION ONLY"}
         <span className="muted" style={{marginLeft: 6}}>
           ⇄
@@ -105,7 +105,7 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
           {dialog === "arming" && <ArmingSteps onClose={() => setDialog("none")} />}
           {dialog === "confirm-sim" && (
             <div style={{display: "grid", gap: 10}}>
-              <div style={{fontWeight: 700, color: "#35d07f"}}>Pause live execution?</div>
+              <div style={{fontWeight: 700, color: "var(--success)"}}>Pause live execution?</div>
               <p className="muted" style={{margin: 0, fontSize: 12, lineHeight: 1.6}}>
                 Profitable bundles will stop being marked submitted and the bot returns to
                 record-only simulation. This takes effect immediately, no restart needed.
@@ -123,16 +123,16 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
           )}
           {dialog === "confirm-live" && (
             <div style={{display: "grid", gap: 10}}>
-              <div style={{fontWeight: 700, color: "#ff5c5c"}}>Switch to LIVE execution</div>
+              <div style={{fontWeight: 700, color: "var(--danger)"}}>Switch to LIVE execution</div>
               <p className="muted" style={{margin: 0, fontSize: 12, lineHeight: 1.6}}>
                 Profitable bundles will be marked submitted from this moment on. The executor&apos;s
                 on-chain profit guard still reverts any unprofitable batch, and a reverting private
                 bundle is dropped by the builder — but this is the switch that makes the bot act
-                rather than observe. Type <b style={{color: "#ff5c5c"}}>LIVE</b> to confirm.
+                rather than observe. Type <b style={{color: "var(--danger)"}}>LIVE</b> to confirm.
                 {demo && (
                   <>
                     <br />
-                    <b style={{color: "#f5b544"}}>Demo mode:</b> no bot is reachable, so this flips
+                    <b style={{color: "var(--warn)"}}>Demo mode:</b> no bot is reachable, so this flips
                     the demo state only — nothing real can happen.
                   </>
                 )}
@@ -145,12 +145,12 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
                 style={inputStyle}
                 disabled={busy}
               />
-              {note && <div className="muted" style={{fontSize: 11, color: "#ff5c5c"}}>{note}</div>}
+              {note && <div className="muted" style={{fontSize: 11, color: "var(--danger)"}}>{note}</div>}
               <div style={{display: "flex", gap: 8}}>
                 <button
                   onClick={() => void post(true)}
                   disabled={busy || typed.trim().toUpperCase() !== "LIVE"}
-                  style={{...primaryBtn, borderColor: "#ff5c5c", color: "#ff5c5c"}}
+                  style={{...primaryBtn, borderColor: "var(--danger)", color: "var(--danger)"}}
                 >
                   {busy ? "switching…" : "go live"}
                 </button>
@@ -161,7 +161,7 @@ export default function ModeSwitch({mode, armed, demo, onChanged}: Props) {
             </div>
           )}
           {note && dialog === "arming" && (
-            <div className="muted" style={{fontSize: 11, color: "#ff5c5c"}}>
+            <div className="muted" style={{fontSize: 11, color: "var(--danger)"}}>
               {note}
             </div>
           )}
@@ -178,7 +178,7 @@ LIVE_EXECUTION=true
 I_UNDERSTAND_LIVE_RISK=yes`;
   return (
     <div style={{display: "grid", gap: 10}}>
-      <div style={{fontWeight: 700, color: "#f5b544"}}>Live execution is not armed</div>
+      <div style={{fontWeight: 700, color: "var(--warn)"}}>Live execution is not armed</div>
       <p className="muted" style={{margin: 0, fontSize: 12, lineHeight: 1.6}}>
         The bot this dashboard talks to was started without live execution. Arming is
         deliberately boot-time only — <b>two</b> independent environment keys must be set by the
@@ -187,12 +187,12 @@ I_UNDERSTAND_LIVE_RISK=yes`;
       </p>
       <pre
         style={{
-          background: "#040608",
-          border: "1px solid #1b2532",
+          background: "var(--bg)",
+          border: "1px solid var(--line)",
           borderRadius: 4,
           padding: "8px 10px",
           fontSize: 11,
-          color: "#a5b4fc",
+          color: "var(--text)",
           margin: 0,
           overflowX: "auto",
         }}
@@ -248,23 +248,23 @@ function Modal({children, onClose}: {children: React.ReactNode; onClose: () => v
 }
 
 const btn: React.CSSProperties = {
-  background: "#111a25",
-  border: "1px solid #24334a",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "6px 12px",
   cursor: "pointer",
   fontFamily: "inherit",
   fontSize: 12,
 };
 
-const primaryBtn: React.CSSProperties = {...btn, borderColor: "#22d3ee", color: "#22d3ee"};
+const primaryBtn: React.CSSProperties = {...btn, borderColor: "var(--cyan)", color: "var(--cyan)"};
 
 const inputStyle: React.CSSProperties = {
-  background: "#070b11",
-  border: "1px solid #1b2532",
+  background: "var(--panel)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "6px 8px",
   fontFamily: "inherit",
   fontSize: 12,

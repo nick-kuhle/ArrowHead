@@ -1,8 +1,8 @@
-# JerseyMikes searcher — hardened systemd unit.
+# ArrowHead searcher — hardened systemd unit.
 # Install paths and user creation are documented in docs/DEPLOYMENT.md.
 
 [Unit]
-Description=JerseyMikes MEV searcher
+Description=ArrowHead MEV searcher
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300
@@ -10,12 +10,12 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=jerseymikes
-Group=jerseymikes
-WorkingDirectory=/opt/jerseymikes
-EnvironmentFile=/etc/jerseymikes/env
+User=arrowhead
+Group=arrowhead
+WorkingDirectory=/opt/arrowhead
+EnvironmentFile=/etc/arrowhead/env
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/jerseymikes/mev-bot
+ExecStart=/opt/arrowhead/mev-bot
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
@@ -34,7 +34,7 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/jerseymikes
+ReadWritePaths=/var/lib/arrowhead
 
 [Install]
 WantedBy=multi-user.target

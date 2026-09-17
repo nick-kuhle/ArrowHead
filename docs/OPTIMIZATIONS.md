@@ -440,9 +440,9 @@ a live revert from a deployed contract.
 
 ### Corrected a false comment on the transient-storage slots
 
-The three guard slots carried `// keccak256("jerseymikes.…")` comments. **They
+The three guard slots carried `// keccak256("arrowhead.…")` comments. **They
 are not those hashes** — verified in Python and again in Solidity;
-`keccak256("jerseymikes.reentrancy.guard")` is `0x0217913e…3090`, not the value
+`keccak256("arrowhead.reentrancy.guard")` is `0x0217913e…3090`, not the value
 in the file. They are hand-typed constants.
 
 **The values are left byte-for-byte unchanged.** They are already correct for

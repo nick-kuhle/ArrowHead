@@ -84,19 +84,19 @@ export default function WalletButton({expectedChainId}: {expectedChainId?: numbe
 
   return (
     <div ref={wrapRef} style={{position: "relative", display: "flex", gap: 8, alignItems: "center"}}>
-      <span className="badge" style={{color: "#22d3ee"}} title={activeName ?? undefined}>
-        <span className="dot" style={{background: "#22d3ee"}} /> {shortHash(address, 6)}
+      <span className="badge" style={{color: "var(--cyan)"}} title={activeName ?? undefined}>
+        <span className="dot" style={{background: "var(--cyan)"}} /> {shortHash(address, 6)}
       </span>
       <span className="muted" style={{fontSize: 11}}>
         {balanceWei !== null ? `${(Number(balanceWei) / 1e18).toFixed(4)} ETH` : "—"}
       </span>
-      <span className="badge" style={{color: wrongChain ? "#ff5c5c" : "#6b7c93"}}>
+      <span className="badge" style={{color: wrongChain ? "var(--danger)" : "var(--muted)"}}>
         {CHAIN_NAMES[chainId ?? -1] ?? (chainId !== null ? `chain ${chainId}` : "chain ?")}
       </span>
       {wrongChain && (
         <button
           onClick={() => void switchChain(expectedChainId!)}
-          style={{...btnStyle, borderColor: "#ff5c5c", color: "#ff5c5c"}}
+          style={{...btnStyle, borderColor: "var(--danger)", color: "var(--danger)"}}
           title={`the console follows the bot's chain — switch your wallet to ${CHAIN_NAMES[expectedChainId!] ?? expectedChainId}`}
         >
           switch to {CHAIN_NAMES[expectedChainId!] ?? `chain ${expectedChainId}`}
@@ -120,10 +120,10 @@ export default function WalletButton({expectedChainId}: {expectedChainId?: numbe
 }
 
 const btnStyle: React.CSSProperties = {
-  background: "#111a25",
-  border: "1px solid #24334a",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "4px 10px",
   cursor: "pointer",
   fontFamily: "inherit",
@@ -135,8 +135,8 @@ const menuStyle: React.CSSProperties = {
   top: "110%",
   right: 0,
   zIndex: 50,
-  background: "#0e141d",
-  border: "1px solid #1b2532",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
   minWidth: 190,
   padding: 4,
@@ -150,7 +150,7 @@ const menuItemStyle: React.CSSProperties = {
   width: "100%",
   background: "transparent",
   border: "none",
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "6px 10px",
   cursor: "pointer",
   fontFamily: "inherit",

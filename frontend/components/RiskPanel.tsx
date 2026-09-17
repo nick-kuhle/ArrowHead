@@ -536,7 +536,7 @@ STRATEGY_ORACLE_FRONTRUN=${enabled("oracle_frontrun")}
                       alignItems: "center",
                       gap: 8,
                       padding: "6px 12px",
-                      background: active ? "#0f1c29" : "#080c12",
+                      background: active ? "var(--panel-2)" : "var(--bg)",
                       borderColor: active ? STRATEGY_COLOR[row.name] : "var(--line)",
                       opacity: bootLocked ? 0.4 : 1,
                       cursor: bootLocked ? "not-allowed" : "pointer",
@@ -578,11 +578,11 @@ STRATEGY_ORACLE_FRONTRUN=${enabled("oracle_frontrun")}
             </p>
             <pre
               style={{
-                background: "#040608",
+                background: "var(--bg)",
                 padding: "10px 12px",
                 borderRadius: 4,
                 border: "1px solid var(--line)",
-                color: "#a5b4fc",
+                color: "var(--text)",
                 fontSize: 11,
                 overflowX: "auto",
                 margin: 0,
@@ -748,20 +748,20 @@ const tabBtnStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  background: "#070b11",
-  border: "1px solid #1b2532",
+  background: "var(--panel)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "5px 8px",
   fontFamily: "inherit",
   fontSize: 12,
 };
 
 const btnStyle: React.CSSProperties = {
-  background: "#111a25",
-  border: "1px solid #24334a",
+  background: "var(--panel-2)",
+  border: "1px solid var(--line)",
   borderRadius: 4,
-  color: "#d7e2f0",
+  color: "var(--text)",
   padding: "4px 8px",
   cursor: "pointer",
   fontFamily: "inherit",
@@ -769,12 +769,12 @@ const btnStyle: React.CSSProperties = {
 };
 
 const codeBoxStyle: React.CSSProperties = {
-  background: "#040608",
+  background: "var(--bg)",
   padding: 8,
   borderRadius: 4,
-  border: "1px solid #1a2330",
+  border: "1px solid var(--line)",
   fontSize: 10,
-  color: "#94a3b8",
+  color: "var(--muted)",
   margin: 0,
   overflowX: "auto",
 };

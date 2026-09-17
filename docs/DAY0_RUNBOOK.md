@@ -36,7 +36,7 @@ Companions: [`GO_LIVE.md`](GO_LIVE.md) (deploying `MevExecutor`),
 > Audit any existing env file with:
 >
 > ```bash
-> grep -nE '_(ETH|GWEI)=|BUILDER_SHARE' /etc/jerseymikes/env   # expect no output
+> grep -nE '_(ETH|GWEI)=|BUILDER_SHARE' /etc/arrowhead/env   # expect no output
 > ```
 
 ## Phase 0 — preflight (minutes)
@@ -92,7 +92,7 @@ production host, against the production `.env`.
    BuilderNet.
 3. **24/7 server + persistent DB** — install per
    [`DEPLOYMENT.md`](DEPLOYMENT.md) (systemd, hardened units, `Restart=
-   on-failure`). `DB_PATH=/var/lib/jerseymikes/mev.sqlite` on a persistent
+   on-failure`). `DB_PATH=/var/lib/arrowhead/mev.sqlite` on a persistent
    volume. **Enable the backup timer** (`mev-db-backup.timer`, WAL-safe
    snapshots every 15 minutes) — if the database is wiped on Day 6 the
    qualification clock resets to Day 0.
@@ -162,11 +162,11 @@ Keep the SQLite file. Then continue Phase 4.
 ## Phase 4 — optional soak (fail-closed) or straight to express live
 
 Express mode is the default: skip to the env arming in [`SIM_TO_LIVE.md`](SIM_TO_LIVE.md)
-and go live on the risk budget (this same `/etc/jerseymikes/env` with the
+and go live on the risk budget (this same `/etc/arrowhead/env` with the
 LIVE switches on). Only if you *want* a measurement window, leave the bot in
 shadow for it:
 
-`/etc/jerseymikes/env` (soak copy — LIVE switches stay off):
+`/etc/arrowhead/env` (soak copy — LIVE switches stay off):
 
 ```ini
 BROADCAST_ENABLED=false
@@ -198,7 +198,7 @@ the reason development has to be finished before Day 0.
 When `GET /api/qualification` reports `PASS` for the target strategies:
 
 ```bash
-# 1. flip the three fail-closed flags in /etc/jerseymikes/env
+# 1. flip the three fail-closed flags in /etc/arrowhead/env
 BROADCAST_ENABLED=true
 LIVE_EXECUTION=true
 I_UNDERSTAND_LIVE_RISK=yes

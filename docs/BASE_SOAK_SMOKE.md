@@ -40,7 +40,7 @@ Work order 3.3 requires after Workstreams 1–3 change semantics:
 # 1. Create Base-only env from template, do NOT reuse mainnet DB/keys
 cp .env.example.base .env.base
 # Fill BASE_HTTP_URL with paid archive RPC, FLASHBLOCKS_WS_URL if provider offers it
-# Set CHAIN_ID=8453, API_BIND=127.0.0.1:8081, DB_PATH=/var/lib/jerseymikes/base.sqlite (managed) or bot/data/base.sqlite (local)
+# Set CHAIN_ID=8453, API_BIND=127.0.0.1:8081, DB_PATH=/var/lib/arrowhead/base.sqlite (managed) or bot/data/base.sqlite (local)
 # Set BROADCAST_ENABLED=false, LIVE_EXECUTION=false, I_UNDERSTAND_LIVE_RISK=no for soak
 
 make setup

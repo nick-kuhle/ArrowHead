@@ -1,20 +1,20 @@
-# JerseyMikes — WAL-safe SQLite backup (see deploy/backup-db.sh).
+# ArrowHead — WAL-safe SQLite backup (see deploy/backup-db.sh).
 # Scheduled by mev-db-backup.timer; pairs with mev-bot.service, which keeps
-# the live database under /var/lib/jerseymikes.
+# the live database under /var/lib/arrowhead.
 
 [Unit]
-Description=JerseyMikes qualification-database backup
+Description=ArrowHead qualification-database backup
 After=mev-bot.service
 Wants=mev-bot.service
 
 [Service]
 Type=oneshot
-User=jerseymikes
-Group=jerseymikes
+User=arrowhead
+Group=arrowhead
 # Override paths here if DB_PATH/BACKUP_DIR are not the defaults below.
-Environment=DB_PATH=/var/lib/jerseymikes/mev.sqlite
-Environment=BACKUP_DIR=/var/lib/jerseymikes/backups
-ExecStart=/opt/jerseymikes/backup-db.sh
+Environment=DB_PATH=/var/lib/arrowhead/mev.sqlite
+Environment=BACKUP_DIR=/var/lib/arrowhead/backups
+ExecStart=/opt/arrowhead/backup-db.sh
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
@@ -30,4 +30,4 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/jerseymikes
+ReadWritePaths=/var/lib/arrowhead

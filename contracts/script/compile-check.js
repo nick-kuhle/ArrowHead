@@ -131,7 +131,7 @@ for (const [file, contracts] of Object.entries(out.contracts || {})) {
     // The console deploys and verifies both production contracts in-browser.
     // Keep its checked-in ABI/creation artifacts generated from the same
     // solc-js compilation used by the artifact-drift check.
-    if (name === "MevExecutor" || name === "JerseyMikesFeeRouter") {
+    if (name === "MevExecutor" || name === "ArrowHeadFeeRouter") {
       const frontendDir = path.resolve(ROOT, "..", "frontend", "lib");
       fs.mkdirSync(frontendDir, {recursive: true});
       fs.writeFileSync(path.join(frontendDir, `${name}.abi.json`), abiJson);

@@ -13,8 +13,8 @@
  * `key`), so no panel can ever render another chain's state.
  */
 
-const CHAIN_KEY = "jm-active-chain";
-const CHAIN_EVENT = "jm:chain-change";
+const CHAIN_KEY = "ah-active-chain";
+const CHAIN_EVENT = "ah:chain-change";
 
 /** The slug the user last selected, or null (server falls back to default). */
 export function readActiveChain(): string | null {

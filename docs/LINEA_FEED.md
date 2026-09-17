@@ -11,7 +11,7 @@ prices, pool reserves and impact probes). No keys, no trades.
   Flashblocks-style pending feed, no `eth_simulateV1` (probe → error -32601).
   The edge is therefore **post-sequencing reaction**, not preconfirmation.
 - Sim path for Linea: local **anvil fork** + pinned-state `eth_call`
-  (JerseyMikes already falls back to this when `eth_simulateV1` is absent).
+  (ArrowHead already falls back to this when `eth_simulateV1` is absent).
 - Endpoints: public RPC `https://rpc.linea.build` (HTTP; WSS `wss://rpc.linea.build`).
   Public = dev/shadow only (rate limited). A paid Linea RPC provider is the
   required follow-up for sustained runs; credential lands in env, never git.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# JerseyMikes — WAL-safe hot backup of the qualification database.
+# ArrowHead — WAL-safe hot backup of the qualification database.
 #
 # The 7-day qualification clock lives in the SQLite database (canonical block
 # observations, relay comparisons, actual matches). If the volume is lost on
@@ -10,8 +10,8 @@
 # WAL writer — never cp the db/wal files directly while the bot is running.
 #
 # Usage:   backup-db.sh [DB_PATH] [BACKUP_DIR]
-# Env:     DB_PATH      (default /var/lib/jerseymikes/mev.sqlite)
-#          BACKUP_DIR   (default /var/lib/jerseymikes/backups)
+# Env:     DB_PATH      (default /var/lib/arrowhead/mev.sqlite)
+#          BACKUP_DIR   (default /var/lib/arrowhead/backups)
 # Retention: backups/quarter/ keeps the newest 96 snapshots (24h at 15-min
 #          cadence); one snapshot per day is promoted to backups/daily/,
 #          keeping the newest 7. Pruning is by mtime, not name parsing.
@@ -20,8 +20,8 @@
 
 set -euo pipefail
 
-DB_PATH="${1:-${DB_PATH:-/var/lib/jerseymikes/mev.sqlite}}"
-BACKUP_DIR="${2:-${BACKUP_DIR:-/var/lib/jerseymikes/backups}}"
+DB_PATH="${1:-${DB_PATH:-/var/lib/arrowhead/mev.sqlite}}"
+BACKUP_DIR="${2:-${BACKUP_DIR:-/var/lib/arrowhead/backups}}"
 KEEP_QUARTER=96   # 24h of 15-minute snapshots
 KEEP_DAILY=7      # a week of daily restore points
 

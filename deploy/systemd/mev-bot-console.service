@@ -1,16 +1,16 @@
-# JerseyMikes Next.js console — loopback-only hardened systemd unit.
+# ArrowHead Next.js console — loopback-only hardened systemd unit.
 
 [Unit]
-Description=JerseyMikes MEV console
+Description=ArrowHead MEV console
 After=network-online.target mev-bot.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=jerseymikes
-Group=jerseymikes
-WorkingDirectory=/opt/jerseymikes/frontend
-EnvironmentFile=/etc/jerseymikes/env
+User=arrowhead
+Group=arrowhead
+WorkingDirectory=/opt/arrowhead/frontend
+EnvironmentFile=/etc/arrowhead/env
 Environment=PORT=3000
 Environment=NODE_ENV=production
 Environment=HOSTNAME=127.0.0.1

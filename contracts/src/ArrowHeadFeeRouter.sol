@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @title JerseyMikesFeeRouter
+/// @title ArrowHeadFeeRouter
 /// @notice Atomic 1% fee wrapper for the dashboard's manual V2 trades.
 ///
 /// This contract is intentionally separate from MevExecutor.
@@ -14,7 +14,7 @@ pragma solidity ^0.8.26;
 /// allowlist the exact router deployment for the chain. The dashboard only
 /// constructs calldata for those known router ABIs and blocks fee-enabled
 /// execution when this wrapper is not configured.
-contract JerseyMikesFeeRouter {
+contract ArrowHeadFeeRouter {
     uint256 public constant PLATFORM_FEE_BPS = 100;
     uint256 public constant BPS = 10_000;
 

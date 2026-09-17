@@ -546,7 +546,7 @@ Added the operator surface for Phase 3 and the W6 gate measurement (see
   borrow-after-move in `Engine::new` (the struct literal moves `cfg`, so the
   new `mode:` field could not read `cfg.live_execution` after it) — fixed by
   building `LiveMode` before the literal ([PR
-  #18](https://github.com/nick-kuhle/JerseyMikes/pull/18) commit `345decc`).
+  #18](https://github.com/nick-kuhle/ArrowHead/pull/18) commit `345decc`).
   `cargo clippy --all-targets` and `cargo test --all` (the two new `LiveMode`
   tests included) pass alongside `contracts (foundry)`, `frontend (next.js)`
   and the artifact-drift job. Lesson recorded and since adopted as policy:
@@ -684,7 +684,7 @@ Two adjacent notes from the same pass:
   to discover.
 
 The fix was confirmed by the CI run on the working branch
-([run 32514548356](https://github.com/nick-kuhle/JerseyMikes/actions/runs/32514548356)):
+([run 32514548356](https://github.com/nick-kuhle/ArrowHead/actions/runs/32514548356)):
 `bot (rust)` green — `cargo fmt --check`, `cargo clippy --all-targets`, and
 `cargo test --all` with 117 passed, 0 failed — alongside green
 `contracts (foundry)`, `frontend (next.js)`, and `embedded bytecode is

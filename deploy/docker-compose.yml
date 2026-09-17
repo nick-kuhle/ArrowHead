@@ -1,4 +1,4 @@
-# JerseyMikes — bot + console.
+# ArrowHead — bot + console.
 #   docker compose --env-file ../.env up -d --build
 # Both control surfaces publish on host loopback only. Reach them through an
 # SSH tunnel or an authenticated TLS reverse proxy.

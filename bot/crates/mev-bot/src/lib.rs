@@ -1,6 +1,6 @@
 #![deny(warnings)]
 
-//! JerseyMikes MEV bot — simulation-first MEV search on live mainnet data.
+//! ArrowHead MEV bot — simulation-first MEV search on live mainnet data.
 //!
 //! See `docs/ARCHITECTURE.md` for the wiring diagram. The short version:
 //!

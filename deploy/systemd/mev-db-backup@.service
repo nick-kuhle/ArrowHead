@@ -1,22 +1,22 @@
-# JerseyMikes — WAL-safe SQLite backup (instance template, one per chain).
+# ArrowHead — WAL-safe SQLite backup (instance template, one per chain).
 #
 # Pairs with mev-bot@.service: instance %i = the chain slug, so each chain's
-# database (/var/lib/jerseymikes/%i.sqlite) is backed up independently. The
+# database (/var/lib/arrowhead/%i.sqlite) is backed up independently. The
 # 7-day qualification clock resets if a chain's volume is lost, so each
 # instance's snapshots must survive reboots.
 
 [Unit]
-Description=JerseyMikes qualification-database backup (%i)
+Description=ArrowHead qualification-database backup (%i)
 After=mev-bot@%i.service
 Wants=mev-bot@%i.service
 
 [Service]
 Type=oneshot
-User=jerseymikes
-Group=jerseymikes
-Environment=DB_PATH=/var/lib/jerseymikes/%i.sqlite
-Environment=BACKUP_DIR=/var/lib/jerseymikes/backups/%i
-ExecStart=/opt/jerseymikes/backup-db.sh
+User=arrowhead
+Group=arrowhead
+Environment=DB_PATH=/var/lib/arrowhead/%i.sqlite
+Environment=BACKUP_DIR=/var/lib/arrowhead/backups/%i
+ExecStart=/opt/arrowhead/backup-db.sh
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
@@ -32,4 +32,4 @@ RestrictNamespaces=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/jerseymikes
+ReadWritePaths=/var/lib/arrowhead

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
-import {JerseyMikesFeeRouter} from "../src/JerseyMikesFeeRouter.sol";
+import {ArrowHeadFeeRouter} from "../src/ArrowHeadFeeRouter.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
 contract FeeRouterTargetMock {
@@ -22,15 +22,15 @@ contract FeeRouterTargetMock {
     }
 }
 
-contract JerseyMikesFeeRouterTest is Test {
-    JerseyMikesFeeRouter internal feeRouter;
+contract ArrowHeadFeeRouterTest is Test {
+    ArrowHeadFeeRouter internal feeRouter;
     FeeRouterTargetMock internal target;
     FailingTarget internal failingTarget;
     MockERC20 internal token;
     address internal treasury = address(0xBEEF);
 
     function setUp() external {
-        feeRouter = new JerseyMikesFeeRouter(treasury);
+        feeRouter = new ArrowHeadFeeRouter(treasury);
         target = new FeeRouterTargetMock();
         failingTarget = new FailingTarget();
         token = new MockERC20("Test", "TST");
@@ -64,7 +64,7 @@ contract JerseyMikesFeeRouterTest is Test {
     }
 
     function test_unapprovedRouterCannotExecute() external {
-        vm.expectRevert(JerseyMikesFeeRouter.RouterNotAllowed.selector);
+        vm.expectRevert(ArrowHeadFeeRouter.RouterNotAllowed.selector);
         feeRouter.executeSwapWithFee{value: 1 ether}(
             address(0), address(token), 1 ether, 0, address(0x1234), ""
         );
@@ -100,7 +100,7 @@ contract JerseyMikesFeeRouterTest is Test {
             )
         );
         assertFalse(ok, "a reverting router must revert the fee trade");
-        assertTrue(containsSelector(err, JerseyMikesFeeRouter.SwapFailed.selector));
+        assertTrue(containsSelector(err, ArrowHeadFeeRouter.SwapFailed.selector));
     }
 
     function test_reentrantExecutionIsRejected() external {
@@ -118,12 +118,12 @@ contract JerseyMikesFeeRouterTest is Test {
         assertFalse(ok, "the re-entrant swap must revert");
         // The outer frame wraps the router failure as SwapFailed; the inner
         // data must be the router's own Reentrancy() error.
-        assertTrue(containsSelector(err, JerseyMikesFeeRouter.SwapFailed.selector));
-        assertTrue(containsSelector(err, JerseyMikesFeeRouter.Reentrancy.selector));
+        assertTrue(containsSelector(err, ArrowHeadFeeRouter.SwapFailed.selector));
+        assertTrue(containsSelector(err, ArrowHeadFeeRouter.Reentrancy.selector));
     }
 
     function test_NativeValueMismatchIsRejected() external {
-        vm.expectRevert(JerseyMikesFeeRouter.ValueMismatch.selector);
+        vm.expectRevert(ArrowHeadFeeRouter.ValueMismatch.selector);
         feeRouter.executeSwapWithFee{value: 0.5 ether}(
             address(0), address(token), 1 ether, 0, address(target), ""
         );
@@ -154,10 +154,10 @@ contract FailingTarget {
 /// @dev A "router" whose swap re-enters the fee router, trying to take a
 ///      second fee inside the first one's execution frame.
 contract ReentrantRouter {
-    JerseyMikesFeeRouter immutable feeRouter;
+    ArrowHeadFeeRouter immutable feeRouter;
     address immutable inner;
 
-    constructor(JerseyMikesFeeRouter r, address innerTarget) {
+    constructor(ArrowHeadFeeRouter r, address innerTarget) {
         feeRouter = r;
         inner = innerTarget;
     }

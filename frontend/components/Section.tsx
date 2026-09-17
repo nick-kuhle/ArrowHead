@@ -1,56 +1,60 @@
 "use client";
 
 import {useState, type ReactNode} from "react";
+import {Icon} from "./ui";
 
-/**
- * Collapsible console section with a stable anchor for the jump nav.
- *
- * The console grew long enough that scrolling the page meant scrolling
- * *through* whatever tall table the cursor happened to be over. Sections
- * collapse instead: the heavy tables are one click away, the page between
- * them is short, and the sticky nav jumps straight to what is needed.
- */
+/** Collapsible dashboard section with a sticky-anchor id for the jump nav
+ * and a tone dot for the brand accent. */
 export default function Section({
   id,
+  icon,
   title,
   subtitle,
   defaultOpen = true,
+  right,
   children,
 }: {
-  /** Anchor id — the jump nav links to `#id`. */
   id: string;
-  title: string;
-  subtitle?: string;
+  icon?: string;
+  title: ReactNode;
+  subtitle?: ReactNode;
   defaultOpen?: boolean;
+  right?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="panel" id={id} style={{scrollMarginTop: 56}}>
+    <section id={id} className="panel" style={{scrollMarginTop: 8}}>
       <div
         className="panel-head"
         style={{cursor: "pointer", userSelect: "none"}}
         onClick={() => setOpen((o) => !o)}
         title={open ? "collapse section" : "expand section"}
+        role="button"
+        aria-expanded={open}
       >
-        <span>
+        <span className="flex items-center gap-2.5 min-w-0">
+          {icon && (
+            <Icon
+              name={icon}
+              size={15}
+              className="flex-none"
+            />
+          )}
+          <span className="truncate">{title}</span>
+        </span>
+        <span className="flex items-center gap-3 shrink-0 min-w-0">
+          {right && <span onClick={(e) => e.stopPropagation()}>{right}</span>}
+          {subtitle && <span className="muted hidden lg:inline truncate">{subtitle}</span>}
           <span
-            style={{
-              display: "inline-block",
-              width: 14,
-              color: "var(--muted)",
-              fontSize: 10,
-              transform: open ? "none" : "rotate(-90deg)",
-              transition: "transform 120ms ease",
-            }}
+            className="text-[10px] text-[var(--muted)]"
+            style={{transform: open ? "none" : "rotate(-90deg)", transition: "transform 120ms ease"}}
           >
             ▾
           </span>
-          {title}
         </span>
-        {subtitle && <span className="muted">{subtitle}</span>}
       </div>
-      {open && <div style={{paddingTop: 4}}>{children}</div>}
+      {open && <div className="p-1.5 sm:p-2">{children}</div>}
     </section>
   );
 }

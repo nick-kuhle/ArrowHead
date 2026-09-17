@@ -9,9 +9,9 @@ fail() { echo "deployment validation: $*" >&2; exit 1; }
 grep -q '127.0.0.1:8080:8080' deploy/docker-compose.yml || fail "bot port is not loopback-only"
 grep -q '127.0.0.1:3000:3000' deploy/docker-compose.yml || fail "console port is not loopback-only"
 ! grep -Eq 'FROM [^ ]+:(latest|stable)( |$)' deploy/Dockerfile.* || fail "container base image is not pinned"
-grep -q '^User=jerseymikes$' deploy/systemd/mev-bot.service || fail "bot systemd unit is not unprivileged"
+grep -q '^User=arrowhead$' deploy/systemd/mev-bot.service || fail "bot systemd unit is not unprivileged"
 grep -q '^ProtectSystem=strict$' deploy/systemd/mev-bot.service || fail "bot systemd filesystem is not read-only"
-grep -q '^ReadWritePaths=/var/lib/jerseymikes$' deploy/systemd/mev-bot.service || fail "bot state path is not explicit"
+grep -q '^ReadWritePaths=/var/lib/arrowhead$' deploy/systemd/mev-bot.service || fail "bot state path is not explicit"
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   API_AUTH_TOKEN=validation ETH_HTTP_URL=https://example.invalid \
