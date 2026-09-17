@@ -146,20 +146,32 @@ async fn validate_cow_intent(
         now_secs,
         s.cow_max_validity_secs,
     ) {
-        Ok(validated) => (
-            StatusCode::OK,
-            Json(json!({
-                "ok": true,
-                "status": "validated_shadow_only",
-                "uid": format!("{:#x}", validated.uid),
-                "digest": format!("{:#x}", validated.digest),
-                "owner": format!("{:#x}", validated.owner),
-                "sellToken": format!("{:#x}", validated.sell_token),
-                "buyToken": format!("{:#x}", validated.buy_token),
-                "validTo": validated.valid_to,
-            })),
-        )
-            .into_response(),
+        Ok(validated) => match s.engine.store.record_cow_intent(
+            &order,
+            &validated,
+            s.engine.cfg.chain.chain_id,
+            settlement,
+        ) {
+            Ok(inserted) => (
+                StatusCode::OK,
+                Json(json!({
+                    "ok": true,
+                    "status": if inserted { "validated_shadow_only" } else { "duplicate_validated_shadow_only" },
+                    "uid": format!("{:#x}", validated.uid),
+                    "digest": format!("{:#x}", validated.digest),
+                    "owner": format!("{:#x}", validated.owner),
+                    "sellToken": format!("{:#x}", validated.sell_token),
+                    "buyToken": format!("{:#x}", validated.buy_token),
+                    "validTo": validated.valid_to,
+                })),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"ok": false, "error": format!("intent journal failed: {error}")})),
+            )
+                .into_response(),
+        },
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(json!({"ok": false, "error": error.to_string()})),

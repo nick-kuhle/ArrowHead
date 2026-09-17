@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 
+use crate::cow::{CowOrderRequest, ValidatedCowOrder};
 use crate::types::{now_ms, BundleRecord, Opportunity, SimulationResult, Strategy};
 
 /// One stored anvil-fork simulation, joined to its opportunity, ready for the
@@ -162,6 +163,41 @@ impl Store {
         };
         store.migrate()?;
         Ok(store)
+    }
+
+    /// Durably record a validated CoW order before any solver/network work.
+    /// Returns false for an idempotent duplicate UID or digest.
+    pub fn record_cow_intent(
+        &self,
+        order: &CowOrderRequest,
+        validated: &ValidatedCowOrder,
+        chain_id: u64,
+        settlement: alloy_primitives::Address,
+    ) -> Result<bool> {
+        let payload = serde_json::to_string(order)?;
+        let now = now_ms() as i64;
+        let changed = self.conn.lock().execute(
+            "INSERT OR IGNORE INTO cow_intents
+             (uid, digest, chain_id, settlement, owner, sell_token, buy_token,
+              sell_amount, buy_amount, valid_to, payload, status,
+              created_at_ms, updated_at_ms)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'validated_shadow_only',?12,?12)",
+            params![
+                format!("{:#x}", validated.uid),
+                format!("{:#x}", validated.digest),
+                chain_id as i64,
+                format!("{:#x}", settlement),
+                format!("{:#x}", validated.owner),
+                format!("{:#x}", validated.sell_token),
+                format!("{:#x}", validated.buy_token),
+                validated.sell_amount.to_string(),
+                validated.buy_amount.to_string(),
+                validated.valid_to as i64,
+                payload,
+                now,
+            ],
+        )?;
+        Ok(changed == 1)
     }
 
     fn migrate(&self) -> Result<()> {
@@ -371,6 +407,27 @@ impl Store {
             );
             INSERT OR IGNORE INTO risk_state (id, kill_switch_tripped, cumulative_net_wei)
                 VALUES (1, 0, '0');
+
+            -- User-signed CoW orders are acceptance state, not telemetry. They
+            -- are deduplicated synchronously before any future solver work.
+            CREATE TABLE IF NOT EXISTS cow_intents (
+                uid             TEXT PRIMARY KEY,
+                digest          TEXT NOT NULL UNIQUE,
+                chain_id        INTEGER NOT NULL,
+                settlement      TEXT NOT NULL,
+                owner           TEXT NOT NULL,
+                sell_token      TEXT NOT NULL,
+                buy_token       TEXT NOT NULL,
+                sell_amount     TEXT NOT NULL,
+                buy_amount      TEXT NOT NULL,
+                valid_to        INTEGER NOT NULL,
+                payload         TEXT NOT NULL,
+                status          TEXT NOT NULL,
+                created_at_ms   INTEGER NOT NULL,
+                updated_at_ms   INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_cow_intents_status
+                ON cow_intents(status, valid_to);
 
             -- Sequencer-backend qualification evidence: for a victim-pinned
             -- opportunity, the fork's predicted victim-leg delta vs the

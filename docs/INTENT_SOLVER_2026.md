@@ -7,7 +7,8 @@ ArrowHead now contains a pure native CoW GPv2 order validator in
 recovers an EOA owner, derives the 56-byte order UID, and rejects expired,
 overlong, malformed, non-ERC20, non-EIP712, zero-value, and fee-invalid orders.
 An authenticated, opt-in `POST /api/intents/validate` shadow endpoint exposes
-that validation result. It does not persist orders or submit settlements yet.
+that validation result and durably deduplicates accepted shadow records in
+SQLite. It does not quote, select a solver, or submit settlements yet.
 
 ## 2026 Market Position
 
@@ -32,8 +33,8 @@ not simply supporting more JSON formats.
 
 1. Promote `POST /api/intents/validate` into an authenticated, bounded
    `POST /api/intents` endpoint only after the persistence gates below pass.
-2. Add transactional SQLite deduplication and an append-only intent transition
-   journal. Accepted intent state must never use the drop-on-full telemetry
+2. Extend the SQLite shadow journal with full intent transitions and settlement
+   records. Accepted intent state must never use the drop-on-full telemetry
    queue.
 3. Add configured chain-specific CoW settlement addresses and solver
    authorization checks. No address is hard-coded as a universal deployment.
