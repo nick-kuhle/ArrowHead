@@ -476,5 +476,6 @@ curl -X POST http://127.0.0.1:8080/api/mode \
 # 7. env: LIVE_SMOKE_MAX=0, BROADCAST_ENABLED=false,
 #         LIVE_EXECUTION=false, I_UNDERSTAND_LIVE_RISK=no
 sudo systemctl restart mev-bot
-# 8. keep the database; begin the 7-day soak (DAY0_RUNBOOK.md Phase 4)
+# 8. keep the database. Express mode (the default) is now live; re-enable an
+#    opt-in soak only if you want one (DAY0_RUNBOOK.md Phase 4)
 ```

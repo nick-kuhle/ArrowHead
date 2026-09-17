@@ -94,8 +94,15 @@ pub fn evaluate_with_required_hours(
     now_ms: u64,
     required_hours: u64,
 ) -> QualificationStatus {
-    let required_hours = required_hours.max(1);
-    let required_ms = required_hours
+    // Express mode: required_hours == 0 (the "seed IS the soak" default).
+    // The time span and the accumulated-evidence bank are skipped entirely —
+    // a strategy qualifies on its static capability plus the operator's risk
+    // budget. Per-candidate fork simulation still runs before every send.
+    let express = required_hours == 0;
+    // The gate still needs a non-zero window so `since_ms` stays sane; the
+    // elapsed-hours and gap checks below are skipped in express mode.
+    let soak_hours = if express { 1 } else { required_hours };
+    let required_ms = soak_hours
         .saturating_mul(60)
         .saturating_mul(60)
         .saturating_mul(1_000);
@@ -112,12 +119,12 @@ pub fn evaluate_with_required_hours(
         .unwrap_or(0);
 
     let mut global_reasons = Vec::new();
-    if coverage.first_seen_ms.is_none() || elapsed_hours < required_hours {
+    if !express && (coverage.first_seen_ms.is_none() || elapsed_hours < required_hours) {
         global_reasons.push(format!(
             "canonical shadow observations span {elapsed_hours}h; {required_hours}h required"
         ));
     }
-    if coverage.maximum_gap_ms > allowed_gap_ms {
+    if !express && coverage.maximum_gap_ms > allowed_gap_ms {
         global_reasons.push(format!(
             "maximum canonical observation gap is {}s; {}s allowed",
             coverage.maximum_gap_ms / 1_000,
@@ -138,7 +145,13 @@ pub fn evaluate_with_required_hours(
                 cfg.qualification_backend,
             )
             .unwrap_or_default();
-        strategies.push(evaluate_strategy(cfg, strategy, evidence, &global_reasons));
+        strategies.push(evaluate_strategy(
+            cfg,
+            strategy,
+            evidence,
+            &global_reasons,
+            express,
+        ));
     }
 
     let live_candidate_simulations = strategies
@@ -188,6 +201,7 @@ fn evaluate_strategy(
     strategy: Strategy,
     evidence: QualificationEvidence,
     global_reasons: &[String],
+    express: bool,
 ) -> StrategyQualification {
     let relay_comparisons = evidence.relay_errors_bps.len() as u64;
     let actual_comparisons = evidence.actual_errors_bps.len() as u64;
@@ -243,7 +257,13 @@ fn evaluate_strategy(
         && actual_comparisons >= cfg.qualification_min_actual_matches;
     let accurate = relay_accuracy_bps >= cfg.qualification_min_accuracy_bps
         && actual_accuracy_bps >= cfg.qualification_min_accuracy_bps;
-    let verdict = if !sufficient {
+    // Express mode: the operator opted out of the evidence soak, so a
+    // statically live candidate with a clean budget qualifies immediately.
+    // The accuracy scoreboard is still reported for the console, just not
+    // blocking.
+    let verdict = if express && sufficient {
+        PASS
+    } else if !sufficient {
         INSUFFICIENT_SAMPLE
     } else if accurate {
         PASS
@@ -293,6 +313,7 @@ fn accuracy_bps(within: u64, total: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::{Address, U256};
 
     #[test]
     fn accuracy_is_integer_and_bounded() {
@@ -433,5 +454,162 @@ mod tests {
             )
             .unwrap();
         assert!(only_actual.relay_errors_bps.is_empty());
+    }
+
+    #[tokio::test]
+    async fn express_mode_qualifies_live_candidates_with_zero_soak_evidence() {
+        use crate::store::Store;
+        use crate::types::now_ms;
+
+        // Brand-new store: no canonical observations, no samples, no
+        // comparisons, no dropped writes. The express-mode (hours == 0)
+        // contract is "the seed IS the soak": a live candidate goes straight
+        // to live trading on the operator's risk budget, while the evidence
+        // soak (hours > 0) still gates on observed shadow duration.
+        let store = std::sync::Arc::new(Store::open_in_memory().unwrap());
+        let writes = crate::store::AsyncStore::spawn(store.clone(), 64);
+        let now = now_ms();
+        let cfg = config_with_express_defaults();
+
+        let express = evaluate_with_required_hours(&cfg, &store, &writes, now, 0);
+        assert_eq!(express.required_hours, 0);
+        assert!(
+            express.pass,
+            "express mode must not force a soak: {}",
+            express.reasons.join("; ")
+        );
+        assert!(express.strategy_passes(Strategy::AtomicArb));
+
+        // The same empty store under a 168h soak must stay blocked — express
+        // mode removes the gate, it does not disable qualification entirely.
+        let soaked = evaluate_with_required_hours(&cfg, &store, &writes, now, 168);
+        assert!(
+            !soaked.pass,
+            "168h soak must still block a fresh deployment"
+        );
+        assert!(soaked.strategies.iter().any(|row| {
+            row.strategy == Strategy::AtomicArb.as_str() && row.verdict != "PASS"
+        }));
+    }
+
+    fn config_with_express_defaults() -> Config {
+        Config {
+            chain: crate::config::ChainConfig {
+                chain_id: 1,
+                name: "test".into(),
+                weth: crate::config::known::WETH,
+                usd_stable: crate::config::known::USDC,
+                block_time_ms: 12_000,
+            },
+            addresses: *crate::config::known::ethereum(),
+            priority_fee_wei: U256::from(1_000_000_000u64),
+            token_valuation: false,
+            valuation_haircut_bps: crate::valuation::DEFAULT_HAIRCUT_BPS,
+            raw_cancel_bump_bps: 1_250,
+            raw_cancel_max_fee_wei: U256::from(500_000_000_000u64),
+            submission_mode: crate::config::SubmissionMode::Bundle,
+            qualification_backend: crate::config::QualificationBackend::Sequencer,
+            chain_block_ingest: false,
+            endpoints: crate::config::Endpoints {
+                http_url: "http://localhost:8545".into(),
+                ws_url: None,
+                mev_share_sse: String::new(),
+                relay_url: String::new(),
+                bundle_relay_urls: vec![],
+                relay_data_urls: vec![],
+                bloxroute_relay_url: String::new(),
+                sequencer_feed: None,
+                flashblocks_ws: None,
+                extra_mempool_ws: vec![],
+                mev_blocker_ws: None,
+                flashbots_signer_key: None,
+                searcher_private_key: None,
+                executor: None,
+                searcher_address: Address::ZERO,
+            },
+            risk: crate::config::RiskConfig {
+                min_net_profit_wei: U256::from(1u8),
+                max_position_wei: U256::from(1_000u64),
+                max_base_fee_wei: U256::from(100u64),
+                bribe_bps: 900,
+                max_gas_per_bundle: 1_000_000,
+                max_drawdown_wei: U256::from(1_000u64),
+                max_inflight_per_strategy: 2,
+                max_revert_rate: 1.0,
+            },
+            strategies: crate::config::StrategyToggles {
+                sandwich: true,
+                sandwich_v3: false,
+                jit: false,
+                atomic_arb: true,
+                liquidation: true,
+                liquidation_compound: false,
+                liquidation_morpho: false,
+                liquidation_maker: false,
+                oracle_frontrun: false,
+            },
+            sim: crate::config::SimConfig {
+                anvil_bin: "anvil".into(),
+                anvil_port: 8548,
+                anvil_replay_port: 8549,
+                replay_fork: false,
+                refork_every_blocks: 1,
+                use_call_bundle: false,
+                target_block_offset: 1,
+                timeout: std::time::Duration::from_millis(1_000),
+            },
+            liquidation: crate::config::LiquidationConfig {
+                watch_cap: 8,
+                morpho_market_cap: 4,
+                morpho_borrower_cap: 4,
+                maker_ilks: vec!["ETH-A".to_string()],
+            },
+            oracle: crate::config::OracleConfig {
+                watch_feeds: vec![],
+                max_leads: 3,
+            },
+            alerts: crate::config::AlertsConfig::default(),
+            api: crate::config::ApiConfig {
+                bind: "127.0.0.1:0".into(),
+                db_path: ":memory:".into(),
+                feed_capacity: 10,
+                write_queue_capacity: 1_024,
+                auth_token: None,
+                allowed_origins: vec![],
+            },
+            pool_discovery: true,
+            pool_discovery_v3: false,
+            decode_universal_router: false,
+            dex_univ3_arb: false,
+            dex_aerodrome_arb: false,
+            dex_aerodrome_stable: false,
+            arb_max_cycle_len: 2,
+            relay_tx_ingest: false,
+            relay_tx_concurrency: 4,
+            strategy_concurrency: 64,
+            replay_lanes: 1,
+            replay_queue_depth: 4,
+            pool_discovery_interval_blocks: 1,
+            inventory_refresh_blocks: 1,
+            arb_enumeration_budget: std::time::Duration::from_millis(25),
+            arb_max_pools: 200,
+            inventory_gate: false,
+            live_execution: false,
+            broadcast_enabled: false,
+            qualification_hours: 0,
+            qualification_min_samples: 0,
+            qualification_min_relay_comparisons: 0,
+            qualification_min_actual_matches: 0,
+            qualification_max_error_bps: 2_000,
+            qualification_min_accuracy_bps: 8_000,
+            qualification_max_gap_secs: 120,
+            finality_depth: 12,
+            preconfirmed_ttl_ms: 1_000,
+            submission_retry_ms: 250,
+            submission_max_attempts: 2,
+            live_smoke_max: 0,
+            live_smoke_max_gas_cost_wei: U256::ZERO,
+            cow: crate::config::CowConfig::default(),
+        }
     }
 }

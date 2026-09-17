@@ -1,23 +1,26 @@
-# Day-0 runbook: production-identical environment → the Day-7 money switch
+# Day-0 runbook: production-identical environment → the Day-0 money switch
 
 This is the operational checklist that takes the environment from "repo on a
-laptop" to "100% production-identical on Day 0", so that when the 7-day soak
-finishes and `GET /api/qualification` shows `PASS`, going live is **three env
-vars, one restart, one console toggle** — zero code changes, zero contract
-redeployments, zero database wipes.
+laptop" to "100% production-identical on Day 0", so that living on the seed
+(express mode) is **three env vars, one restart, one console toggle** —
+zero code changes, zero contract redeployments, zero database wipes. Going
+live is **not gated on a soak**; `QUALIFICATION_HOURS=0` is the shipped
+default. The optional soak below exists for operators who want a measurement
+window, and it must be an explicit choice, not the default.
 
-> **Prerequisite: development is done before Day 0 starts.** This runbook is
+> **Prerequisite: development is done before day 0 starts.** This runbook is
 > owned by operators and testers, and it assumes a released build: all four CI
 > jobs green on the tagged commit, no open code items on the live path, and
 > the deployment units in `deploy/` ready to install. Engineering does not
-> "finish during the soak" — the whole point of the fixed 7-day window is that
-> every hour of it measures the *same* binary.
+> "finish during the soak" — if you *do* enable a soak, every hour of it
+> measures the same binary.
 >
-> The clock is unforgiving by design. Any code change to the bot restarts the
-> soak at zero, because qualification evidence is only evidence about the
-> build that produced it. Deciding to ship a fix mid-soak is therefore
-> deciding to spend another seven days, and that trade is the operator's to
-> make deliberately, not to stumble into.
+> The clock is unforgiving by design. If an opt-in soak is running, any code
+> change to the bot restarts it at zero, because qualification evidence is only
+> evidence about the build that produced it. Deciding to ship a fix mid-soak
+> is therefore deciding to spend that window again, and that trade is the
+> operator's to make deliberately, not to stumble into. Express mode (the
+> default) has no clock at all: qualification passes on the risk budget.
 
 Companions: [`GO_LIVE.md`](GO_LIVE.md) (deploying `MevExecutor`),
 [`SIM_TO_LIVE.md`](SIM_TO_LIVE.md) (what changes between lanes),
@@ -122,11 +125,12 @@ stays `false` — that decision is made and recorded in `W6_MEMO.md`.
 
 ## Phase 3b — optional live-smoke burst (one or two real sends)
 
-The 7-day soak still cannot start counting *live* evidence until the
-signing → relay → nonce → executor path has been proven once. Qualification
-cannot be env-knobbed away (`QUALIFICATION_HOURS` is `.max(1)` and still
-needs high-confidence matches). For a bounded proving burst, set these in
-the **operator** `.env` — they are not repository defaults:
+Express mode needs no proving window: the seed IS the soak, and the risk
+budget plus the exact-nonce simulation are the gate. Operators who re-enable a
+soak still need the signing → relay → nonce → executor path proven once before
+its clock counts evidence; even in express mode a couple of provably-tiny
+sends are a healthy habit. For a bounded proving burst, set these in the
+**operator** `.env` — they are not repository defaults:
 
 ```ini
 LIVE_SMOKE_MAX=2
@@ -155,9 +159,14 @@ I_UNDERSTAND_LIVE_RISK=no
 
 Keep the SQLite file. Then continue Phase 4.
 
-## Phase 4 — start the 7-day soak (fail-closed)
+## Phase 4 — optional soak (fail-closed) or straight to express live
 
-`/etc/jerseymikes/env`:
+Express mode is the default: skip to the env arming in [`SIM_TO_LIVE.md`](SIM_TO_LIVE.md)
+and go live on the risk budget (this same `/etc/jerseymikes/env` with the
+LIVE switches on). Only if you *want* a measurement window, leave the bot in
+shadow for it:
+
+`/etc/jerseymikes/env` (soak copy — LIVE switches stay off):
 
 ```ini
 BROADCAST_ENABLED=false

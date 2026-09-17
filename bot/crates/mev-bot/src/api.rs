@@ -107,6 +107,7 @@ pub fn router(engine: Arc<Engine>) -> Router {
         .route("/api/mode", get(mode))
         .route("/api/risk", get(risk_state))
         .route("/api/alerts", get(alerts))
+        .route("/api/cow", get(cow_orderbook))
         .route("/api/metrics", get(metrics))
         .merge(mutating)
         .layer(cors)
@@ -268,6 +269,48 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 async fn health() -> impl IntoResponse {
     Json(json!({"ok": true}))
+}
+
+/// Live CoW Protocol Order Book feed.
+///
+/// `enabled:false` when the feed is off (the honest default), an error string
+/// when it is enabled but has never succeeded, or the last *successful*
+/// snapshot with fetch-age and counters so a stale snapshot is visible as
+/// stale. 404-free by design: the route exists on every chain so the
+/// dashboard never guesses.
+async fn cow_orderbook(State(s): State<ApiState>) -> Json<serde_json::Value> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let Some(cow) = &s.engine.cow_orderbook else {
+        return Json(json!({
+            "ok": true,
+            "enabled": false,
+            "error": "feed disabled (set COW_ORDERBOOK_ENABLED=true)"
+        }));
+    };
+    let now_ms = crate::types::now_ms();
+    let last_ok = cow.last_ok_at_ms.load(Relaxed);
+    let snapshot = cow.snapshot.read().clone();
+    let error = (last_ok == 0).then(|| {
+        let failures = cow.failures.load(Relaxed);
+        format!("no successful poll yet ({} attempts)", failures)
+    });
+    let mut base = snapshot
+        .unwrap_or_else(crate::cow_orderbook::CowOrderbookSnapshot::default);
+    base.base_url = cow.base_url().to_string();
+    base.chain_id = cow.chain_id();
+    let fetched_at_ms = base.fetched_at_ms;
+    Json(json!({
+        "ok": true,
+        "enabled": true,
+        "baseUrl": cow.base_url(),
+        "pollCount": cow.polls.load(Relaxed),
+        "failureCount": cow.failures.load(Relaxed),
+        "lastOkMs": last_ok,
+        "lastErrorMs": cow.last_error_at_ms.load(Relaxed),
+        "snapshotAgeMs": (fetched_at_ms > 0).then(|| now_ms.saturating_sub(fetched_at_ms)),
+        "error": error,
+        "snapshot": base,
+    }))
 }
 
 async fn status(State(s): State<ApiState>) -> impl IntoResponse {

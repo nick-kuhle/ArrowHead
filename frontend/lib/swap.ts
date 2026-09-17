@@ -4,7 +4,7 @@
  * Direct wallet execution is deliberately limited to the chain's configured
  * Uniswap V2-compatible router. Arbitrary calldata is not accepted from the
  * UI. If a platform treasury is configured, execution requires the deployed
- * JerseyMikes fee router so the 1% fee and swap are atomic.
+ * ArrowHead fee router so the 1% fee and swap are atomic.
  */
 
 import {encodeFunctionData, type Address} from "viem";

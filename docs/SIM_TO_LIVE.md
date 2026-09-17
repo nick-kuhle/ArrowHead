@@ -25,13 +25,21 @@ rehearsal. Rehearsal uses all defaults (`BROADCAST_ENABLED=false`,
 - `FAIL`
 - `INSUFFICIENT SAMPLE`
 
-for every strategy. A strategy can be submitted only when its own row is
-`PASS`. A global elapsed timer does not qualify anything.
+for every strategy.
 
-Each live-candidate row requires, within the same window:
+**Express mode (the default, `QUALIFICATION_HOURS=0`) skips the evidence soak
+entirely: the seed IS the soak.** A live-candidate strategy is submittable on
+its static capability plus the operator's risk budget — no shadow
+observations, no sample counts, no elapsed-time wall. Per-candidate fork
+simulation and the on-chain profit-or-revert executor still run before every
+send regardless of mode.
 
-1. at least `QUALIFICATION_HOURS` of canonical block observations (168 hours by
-   default), with no gap larger than `QUALIFICATION_MAX_GAP_SECS`;
+Under an **opt-in soak** (`QUALIFICATION_HOURS` set to 1/24/168, via env or
+the Go-Live wizard), a strategy can be submitted only when its own row is
+`PASS`, and each live-candidate row then requires, within the same window:
+
+1. at least `QUALIFICATION_HOURS` of canonical block observations, with no gap
+   larger than `QUALIFICATION_MAX_GAP_SECS`;
 2. no dropped persistence writes in the current process;
 3. `QUALIFICATION_MIN_SAMPLES` successful exact-payload fork simulations;
 4. `QUALIFICATION_MIN_RELAY_COMPARISONS` independent second-opinion comparisons
@@ -166,13 +174,15 @@ A bundle reaches a relay only when all are true:
 
 ## Live smoke
 
-Qualification cannot be env-knobbed away: `QUALIFICATION_HOURS` and the sample
-floors are `.max(1)`, and a strategy still needs high-confidence
-`actual_mev_matches`. The 7-day soak is the production path.
+There is no mandatory soak: express mode (`QUALIFICATION_HOURS=0`, the
+default) submits live-candidate strategies as soon as the risk budget, the
+deployed+funded executor, and the exact-nonce simulation allow. The bottom line
+is the seed IS the soak.
 
-Before that soak, operators sometimes need one or two *real*
-`eth_sendBundle`s so the signing, relay, nonce, and executor path is proven
-on chain — even if those shots lose money. That is `LIVE_SMOKE_MAX`:
+Operators who prefer to re-introduce an evidence window can (soak mode), and
+anyone can still keep `LIVE_SMOKE_MAX` for a handful of provably-tiny *real*
+`eth_sendBundle`s used to prove the signing, relay, nonce, and executor path on
+chain — even if those shots lose money:
 
 ```ini
 LIVE_SMOKE_MAX=2

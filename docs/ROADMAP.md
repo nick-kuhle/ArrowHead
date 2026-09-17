@@ -1,31 +1,36 @@
 # Roadmap
 
-Chains are added one at a time; each one has to survive a week of simulation
+Chains are added one at a time; each has to survive a week of *live evidence*
 before the next is started.
 
 ## Where the project is
 
-**Development finishes before the soak begins.** These are two different
+**Development finishes before live trading begins.** These are two different
 activities owned by two different groups, and they do not overlap:
 
 | | Owner | Question it answers | Exit condition |
 | --- | --- | --- | --- |
 | **Build** | engineering | Is the system correct, complete and production-grade? | Every CI gate green and blocking; no unimplemented path on the live route; all four operator controls implemented; docs current |
-| **Soak** | operators + testers | Does this correct system actually make money on this chain, safely, over time? | `GET /api/qualification` reports `PASS` per strategy from 7 days of continuous canonical evidence |
+| **Live** | operators | Does this correct system actually make money on this chain, safely? | Risk budget armed, executor deployed + funded, one-time smoke per chain — see `DAY0_RUNBOOK.md` |
 
-The soak is **not** a development phase with a longer feedback loop, and it is
-not where remaining engineering work gets discovered. It is a measurement
-period run by operators against a finished binary. If a soak turns up a code
-defect, that is a build-phase escape — the soak stops, the fix ships through
-CI, and the soak clock **restarts from zero** (`DAY0_RUNBOOK.md` Phase 4).
-Qualification evidence is only meaningful about the exact build that produced
-it.
+**Express mode is the default (`QUALIFICATION_HOURS=0`): the seed IS the
+soak.** There is no 7-day shadow probation — a live-candidate strategy goes
+straight to live trading on the risk budget, protected by per-candidate fork
+simulation and the on-chain profit-or-revert executor.
+
+Operators who prefer a measurement window can re-enable one: set
+`QUALIFICATION_HOURS` (1/24/168) or use the Go-Live wizard's soak control.
+Under a soak, `GET /api/qualification` reports `PASS` per strategy only from
+that many hours of continuous canonical evidence; a code defect discovered
+during a soak stops the clock, the fix ships through CI, and the soak clock
+**restarts from zero** (`DAY0_RUNBOOK.md` Phase 4). Qualification evidence is
+only meaningful about the exact build that produced it.
 
 Practically, that means engineering hands operators: a tagged release that is
 green on all four CI jobs, `mev-bot doctor` passing on the target host, the
 deployment units in `deploy/`, and a runbook they can execute without an
-engineer in the room. Operators hand engineering back: qualification verdicts,
-funnel readings, and alert history.
+engineer in the room. Operators hand engineering back: live P&L, funnel
+readings, and alert history.
 
 **Current state:** the build phase is complete for Ethereum mainnet and for the
 Base safety foundation. The directional new-token sniper was explicitly removed

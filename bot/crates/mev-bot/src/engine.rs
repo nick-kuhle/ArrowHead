@@ -167,6 +167,10 @@ pub struct Engine {
     /// Reentrancy guard for the settle task (same shape as
     /// `own_reconciliation_running`).
     state_comparison_running: Arc<std::sync::atomic::AtomicBool>,
+    /// Live CoW Protocol Order Book feed (read-only). `Some` when
+    /// `COW_ORDERBOOK_ENABLED` is set and the chain has a realm (or
+    /// `COW_ORDERBOOK_URL` provides one); served on `/api/cow`.
+    pub cow_orderbook: Option<Arc<crate::cow_orderbook::CowOrderbookClient>>,
 }
 
 /// A delivered block waiting to be scored: the block and its transactions.
@@ -789,6 +793,41 @@ impl Engine {
             tracing::warn!(target: "engine", "{warning}");
         }
 
+        // Live CoW Order Book feed. Off by default (deliberately: no
+        // unrequested outbound calls). The client is built once and shared
+        // with the poller task and /api/cow.
+        let cow_orderbook = if cfg.cow.orderbook_enabled {
+            match cfg
+                .cow
+                .orderbook_url
+                .clone()
+                .or_else(|| crate::cow_orderbook::orderbook_base_url(cfg.chain.chain_id))
+            {
+                Some(base) => match crate::cow_orderbook::CowOrderbookClient::new(
+                    base,
+                    cfg.chain.chain_id,
+                    cfg.cow.max_orders,
+                ) {
+                    Ok(client) => Some(client),
+                    Err(error) => {
+                        tracing::warn!(target: "engine", error = %error, "COW_ORDERBOOK_ENABLED but the Order Book client failed to build — /api/cow will be absent");
+                        None
+                    }
+                },
+                None => {
+                    tracing::warn!(
+                        target: "engine",
+                        chain_id = cfg.chain.chain_id,
+                        "COW_ORDERBOOK_ENABLED is set but there is no built-in CoW realm for \
+                         this chain and COW_ORDERBOOK_URL is not set — /api/cow will be absent"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let mut strategies: Vec<Arc<dyn StrategyImpl>> = Vec::new();
         if cfg.strategies.sandwich {
             strategies.push(Arc::new(SandwichStrategy));
@@ -996,6 +1035,7 @@ impl Engine {
             chain_blocks: chain_blocks_stats,
             state_comparisons: Arc::new(parking_lot::Mutex::new(std::collections::VecDeque::new())),
             state_comparison_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            cow_orderbook,
         })
     }
 
@@ -1015,10 +1055,11 @@ impl Engine {
 
     /// Change the operator's soak threshold and force an immediate evidence
     /// refresh. This never marks a strategy passed by itself; the full
-    /// qualification evaluation still decides the result.
+    /// qualification evaluation still decides the result. `0` is express mode
+    /// (remove the time + evidence bank gate entirely).
     pub fn set_qualification_hours(&self, hours: u64) -> Result<(), &'static str> {
-        if !(1..=8_760).contains(&hours) {
-            return Err("qualification hours must be between 1 and 8760");
+        if !(0..=8_760).contains(&hours) {
+            return Err("qualification hours must be between 0 and 8760");
         }
         self.qualification_hours
             .store(hours, std::sync::atomic::Ordering::Release);
@@ -1149,6 +1190,9 @@ impl Engine {
     /// Run forever.
     pub async fn run(self: Arc<Self>) -> Result<()> {
         self.spawn_alert_evaluator();
+        if let Some(cow) = &self.cow_orderbook {
+            self.spawn_cow_poller(cow.clone());
+        }
         if let Some(rx) = self.replay_rx.lock().take() {
             self.spawn_replay_worker(rx);
         }
@@ -2371,6 +2415,24 @@ pub fn enabled_strategies(cfg: &Config) -> Vec<&'static str> {
 }
 
 impl Engine {
+    /// Poll the CoW Order Book API on a fixed interval. A failed poll only
+    /// moves the counters — the previous good snapshot stays so the dashboard
+    /// shows real data with a visible age instead of nothing.
+    fn spawn_cow_poller(
+        self: &Arc<Self>,
+        cow: Arc<crate::cow_orderbook::CowOrderbookClient>,
+    ) {
+        let poll_secs = self.cfg.cow.auction_poll_secs.max(5);
+        tokio::spawn(async move {
+            // Tick once immediately so /api/cow is live within a second of
+            // boot, then settle into the configured cadence.
+            loop {
+                cow.poll().await;
+                tokio::time::sleep(std::time::Duration::from_secs(poll_secs)).await;
+            }
+        });
+    }
+
     /// Evaluate the alert rules on a fixed interval. Transitions are logged,
     /// pushed to the SSE feed and (optionally) delivered to a webhook.
     fn spawn_alert_evaluator(self: &Arc<Self>) {

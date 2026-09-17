@@ -450,6 +450,7 @@ mod tests {
             submission_max_attempts: 2,
             live_smoke_max: 0,
             live_smoke_max_gas_cost_wei: U256::ZERO,
+            cow: crate::config::CowConfig::default(),
         })
     }
 

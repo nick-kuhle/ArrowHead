@@ -3,8 +3,8 @@ import "./globals.css";
 import {WalletProvider} from "@/lib/wallet";
 
 export const metadata: Metadata = {
-  title: "JerseyMikes — MEV simulation console",
-  description: "Simulation-only MEV searcher: sandwich, JIT, atomic arb, liquidation",
+  title: "ArrowHead — MEV terminal",
+  description: "Live multi-chain MEV searcher: sandwich, JIT, atomic arb, liquidation — the seed is the soak",
 };
 
 export default function RootLayout({children}: {children: React.ReactNode}) {

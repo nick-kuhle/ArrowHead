@@ -284,6 +284,7 @@ fn box_config() -> Config {
         submission_max_attempts: 2,
         live_smoke_max: 0,
         live_smoke_max_gas_cost_wei: U256::ZERO,
+        cow: mev_bot::config::CowConfig::default(),
     }
 }
 

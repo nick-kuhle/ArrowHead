@@ -6,8 +6,8 @@ import {chainBySlug, tokenForChain} from "./chains";
  * The browser never talks to a bot directly (it may be on a private network,
  * and in a sandboxed preview `localhost` means something different in the
  * browser than on the server). Everything goes through `/api/bot/*`, which
- * proxies to the selected chain's bot and falls back to the demo generator
- * when that bot is not reachable.
+ * proxies to the selected chain's bot and answers an honest HTTP 503 when
+ * that bot is not reachable — it never fabricates data.
  *
  * Multi-chain: every helper takes an optional `chainSlug` (the `?chain=`
  * value). Omitted = the first configured chain, which for a single-chain

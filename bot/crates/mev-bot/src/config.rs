@@ -103,6 +103,79 @@ pub mod known {
     pub const BASE_AERO_WETH_USDC_VOLATILE: Address =
         address!("cDAC0d6c6C59727a65F871236188350531885C43");
 
+    // ── Arbitrum One (chain 42161) values ────────────────────────────────
+    // Verified live 2026-09-17: code presence + protocol getters (Aave
+    // `ADDRESSES_PROVIDER()`, Compound `baseToken()`, Balancer
+    // `getProtocolFeesCollector()`, Morpho `owner()`). Every entry remains
+    // env-overridable.
+
+    pub const ARB_WETH: Address = address!("82aF49447D8a07e3bd95BD0d56f35241523fBab1");
+    /// Native (Circle) USDC on Arbitrum.
+    pub const ARB_USDC: Address = address!("af88d065e77c8cC2239327C5EDb3A432268e5831");
+    pub const ARB_USDT: Address = address!("Fd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9");
+    pub const ARB_DAI: Address = address!("DA10009cBd5D07dd0CeCc66161FC93D7c9000da1");
+    pub const ARB_WBTC: Address = address!("2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f");
+    pub const ARB_WSTETH: Address = address!("5979D7b546E38E414F7E9822514be443A4800529");
+    /// Uniswap V2 factory — verified 2026-09-17.
+    pub const ARB_UNIV2_FACTORY: Address = address!("f1D7CC64Fb4452F05c498126312eBE29f30Fbcf9");
+    /// Universal-style V2 router — verified 2026-09-17.
+    pub const ARB_UNIV2_ROUTER: Address = address!("4752ba5DBc23f44D87826276BF6Fd6b1C372aD24");
+    /// Uniswap V3 factory/quoter/sqrtNPM — deployed at the mainnet addresses.
+    pub const ARB_UNIV3_FACTORY: Address = address!("1F98431c8aD98523631AE4a59f267346ea31F984");
+    pub const ARB_UNIV3_QUOTER_V2: Address = address!("61fFE014bA17989E743c5F6cB21bF9697530B21e");
+    pub const ARB_UNIV3_NPM: Address = address!("C36442b4a4522E871399CD717aBDD847Ab11FE88");
+    /// SwapRouter02 — deployed at the mainnet address on Arbitrum.
+    pub const ARB_UNIV3_SWAP_ROUTER_02: Address =
+        address!("68b3465833fb72A70ecDF485E0e4C7bD8665Fc45");
+    /// Balancer V2 vault — same address family as mainnet, verified live.
+    pub const ARB_BALANCER_VAULT: Address = address!("BA12222222228d8Ba445958a75a0704d566BF2C8");
+    /// Aave V3 pool / oracle / data provider — verified live 2026-09-17.
+    pub const ARB_AAVE_V3_POOL: Address = address!("794a61358D6845594F94dc1DB02A252b5b4814aD");
+    pub const ARB_AAVE_V3_ORACLE: Address = address!("b56c2F0B653B2e0b10C9b928C8580Ac5Df02C7C7");
+    pub const ARB_AAVE_V3_DATA_PROVIDER: Address =
+        address!("69FA688f1Dc47d4B5d8029D5a35FB7a548310654");
+    /// Compound V3 USDC comet — `baseToken()` verified = native USDC.
+    pub const ARB_COMPOUND_V3_USDC: Address =
+        address!("9c4ec768c28520B50860ea7a15bd7213a9fF58bf");
+    /// Morpho Blue — NOT the mainnet address (`0xBBBBB…` is empty here);
+    /// this Arb-deployed instance verified live 2026-09-17.
+    pub const ARB_MORPHO_BLUE: Address = address!("6c247b1F6182318877311737BaC0844bAa518F5e");
+
+    // ── Linea (chain 59144) values ───────────────────────────────────────
+    // Verified live 2026-09-16/17 against `https://rpc.linea.build`
+    // (code presence + protocol getters: ZeroLend `ADDRESSES_PROVIDER()`,
+    // Lynex `allPairsLength()=334`, Mendi `allMarkets()[0]`, ZeroLend oracle
+    // `getAssetPrice(WETH)≈$2434`). Chain is sequencer-only: no public
+    // mempool, no Flashblocks, no `eth_simulateV1`.
+
+    pub const LINEA_WETH: Address = address!("e5D7C2a44FfDDf6b295A15c148167daaAf5Cf34f");
+    /// Bridged USDC (native USDC_E does not exist on Linea).
+    pub const LINEA_USDC: Address = address!("176211869cA2b568f2A7D4EE941E073a821EE1ff");
+    pub const LINEA_USDT: Address = address!("A219439258ca9da29E9Cc4cE5596924745e12B93");
+    pub const LINEA_DAI: Address = address!("4AF15ec2A0BD43Db75dd04E62FAA3B8EF36b00d5");
+    pub const LINEA_WBTC: Address = address!("3aAB2285ddcDdaD8edf438C1bAB47e1a9D05a9b4");
+    pub const LINEA_WSTETH: Address = address!("B5beDd42000b71FddE22D3Ee8a79Bd49A568fC8F");
+    /// Lynex (Solidly/ve3 fork) factory + router — verified live.
+    pub const LINEA_LYNEX_FACTORY: Address =
+        address!("Bc7695Fd00E3b32D08124b7a4287493aEE99f9ee");
+    pub const LINEA_LYNEX_ROUTER: Address =
+        address!("610D2f07b7EdC67565160F587F37636194C34E74");
+    /// Etherex V3 factory (UniV3 fork) + SwapRouter — verified live.
+    pub const LINEA_ETHEREX_V3_FACTORY: Address =
+        address!("Ae334f70A7FC44FCC2df9e6A37BC032497Cf80f1");
+    pub const LINEA_ETHEREX_V3_ROUTER: Address =
+        address!("8BE024b5c546B5d45CbB23163e1a4dca8fA5052A");
+    /// Mendi comptroller (Compound V2 fork) — `getAllMarkets()` verified live.
+    pub const LINEA_MENDI_COMPTROLLER: Address =
+        address!("1b4D3b0421dDc1eB216D230Bc01527422Fb93103");
+    /// ZeroLend (Aave V3 fork) pool / oracle / data provider — verified live.
+    pub const LINEA_ZEROLEND_POOL: Address =
+        address!("2f9bB73a8e98793e26Cb2F6C4ad037BDf1C6B269");
+    pub const LINEA_ZEROLEND_ORACLE: Address =
+        address!("FF679e5B4178A2f74A56f0e2c0e1FA1C80579385");
+    pub const LINEA_ZEROLEND_DATA_PROVIDER: Address =
+        address!("67f93d36792c49a4493652B91ad4bD59f428AD15");
+
     /// Collateral tokens whose feeds the oracle front-runner maps leads to.
     pub fn collateral_universe() -> [Address; 3] {
         [WETH, WBTC, WSTETH]
@@ -281,12 +354,103 @@ pub mod known {
         })
     }
 
+    /// Arbitrum One (chain 42161) registry. All rows verified live 2026-09-17
+    /// (code presence + the protocol getters in the section comment above).
+    ///
+    /// Scope: the strongest solo-operator liquidation market in the L2 world
+    /// (Aave V3 ~$500M+ TVL, native USDC, flash-loan capable via the shared
+    /// Balancer vault) plus standard Uniswap V2/V3 arbitrage. Morpho Blue is
+    /// the Arbitrum-specific instance, not the mainnet one.
+    pub fn arb() -> &'static ChainAddresses {
+        static PROFILE: std::sync::OnceLock<ChainAddresses> = std::sync::OnceLock::new();
+        PROFILE.get_or_init(|| ChainAddresses {
+            chain_id: 42161,
+            weth: ARB_WETH,
+            usdc: ARB_USDC,
+            usdt: Some(ARB_USDT),
+            dai: Some(ARB_DAI),
+            wbtc: Some(ARB_WBTC),
+            wsteth: Some(ARB_WSTETH),
+            univ2_factory: Some(ARB_UNIV2_FACTORY),
+            univ2_router: Some(ARB_UNIV2_ROUTER),
+            univ3_factory: Some(ARB_UNIV3_FACTORY),
+            univ3_quoter_v2: Some(ARB_UNIV3_QUOTER_V2),
+            univ3_npm: Some(ARB_UNIV3_NPM),
+            univ3_swap_router: None,
+            univ3_swap_router_02: Some(ARB_UNIV3_SWAP_ROUTER_02),
+            universal_router: None,
+            sushi_factory: None,
+            balancer_vault: Some(ARB_BALANCER_VAULT),
+            aerodrome_router: None,
+            aerodrome_factory: None,
+            aave_v3_pool: Some(ARB_AAVE_V3_POOL),
+            aave_v3_oracle: Some(ARB_AAVE_V3_ORACLE),
+            aave_v3_data_provider: Some(ARB_AAVE_V3_DATA_PROVIDER),
+            compound_v3_usdc: Some(ARB_COMPOUND_V3_USDC),
+            morpho_blue: Some(ARB_MORPHO_BLUE),
+            maker: false,
+            core_tokens: [ARB_USDC, ARB_USDT, ARB_DAI, ARB_WBTC],
+            core_tokens_len: 4,
+            sequencer_only: true,
+            refork_default: 6,
+            submission_default: SubmissionMode::Raw,
+            qualification_default: QualificationBackend::Sequencer,
+        })
+    }
+
+    /// Linea (chain 59144) registry. All rows verified live 2026-09-16/17
+    /// against the public Linea RPC (see the section comment above).
+    ///
+    /// Scope: ZeroLend (Aave V3 fork) liquidations via the existing Aave
+    /// geometry, plus Lynex arb once a Solidly-venue adapter lands. Lynex is
+    /// deliberately NOT registered under `univ2_factory`: its pairs do not
+    /// follow Uniswap V2 math and misreading them would simulate garbage.
+    /// Start on USD-pegs and WBTC/WETH depth per docs/LINEA_FEED.md.
+    pub fn linea() -> &'static ChainAddresses {
+        static PROFILE: std::sync::OnceLock<ChainAddresses> = std::sync::OnceLock::new();
+        PROFILE.get_or_init(|| ChainAddresses {
+            chain_id: 59144,
+            weth: LINEA_WETH,
+            usdc: LINEA_USDC,
+            usdt: Some(LINEA_USDT),
+            dai: Some(LINEA_DAI),
+            wbtc: Some(LINEA_WBTC),
+            wsteth: Some(LINEA_WSTETH),
+            univ2_factory: None,
+            univ2_router: None,
+            univ3_factory: Some(LINEA_ETHEREX_V3_FACTORY),
+            univ3_quoter_v2: None,
+            univ3_npm: None,
+            univ3_swap_router: None,
+            univ3_swap_router_02: Some(LINEA_ETHEREX_V3_ROUTER),
+            universal_router: None,
+            sushi_factory: None,
+            balancer_vault: None,
+            aerodrome_router: None,
+            aerodrome_factory: None,
+            aave_v3_pool: Some(LINEA_ZEROLEND_POOL),
+            aave_v3_oracle: Some(LINEA_ZEROLEND_ORACLE),
+            aave_v3_data_provider: Some(LINEA_ZEROLEND_DATA_PROVIDER),
+            compound_v3_usdc: None,
+            morpho_blue: None,
+            maker: false,
+            core_tokens: [LINEA_USDC, LINEA_USDT, LINEA_WBTC, LINEA_WSTETH],
+            core_tokens_len: 4,
+            sequencer_only: true,
+            refork_default: 6,
+            submission_default: SubmissionMode::Raw,
+            qualification_default: QualificationBackend::Sequencer,
+        })
+    }
+
     /// The built-in registry for a chain id. `None` for chains without a
     /// profile — the operator supplies addresses via env overrides.
     pub fn for_chain(chain_id: u64) -> Option<&'static ChainAddresses> {
         match chain_id {
             1 => Some(ethereum()),
+            42161 => Some(arb()),
             8453 => Some(base()),
+            59144 => Some(linea()),
             _ => None,
         }
     }
@@ -486,6 +650,40 @@ impl Default for AlertsConfig {
     }
 }
 
+/// Live CoW Protocol Order Book feed tuning.
+///
+/// When enabled the bot polls the chain's CoW Order Book API
+/// (`api.cow.fi/{realm}/api/v1/auction`) and surfaces the real solver-side
+/// orderflow on `/api/cow`. This feed is **read-only**: it never signs,
+/// pre-signs or submits anything — order placement is a separate, gated build
+/// item (`COW_*` intent endpoints stay offline validators). `COW_ORDERBOOK_URL`
+/// overrides the built-in realm mapping for chains with a CoW deployment.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CowConfig {
+    /// Poll the chain's CoW Order Book API for live open orders.
+    pub orderbook_enabled: bool,
+    /// Optional override for the Order Book base URL (e.g.
+    /// `https://api.cow.fi/base`). Defaults to the built-in realm for the
+    /// configured chain.
+    pub orderbook_url: Option<String>,
+    /// Seconds between auction polls. Clamped to >= 5 at parse time.
+    pub auction_poll_secs: u64,
+    /// Defensive cap on orders kept per poll; the book can be large.
+    pub max_orders: usize,
+}
+
+impl Default for CowConfig {
+    fn default() -> Self {
+        Self {
+            orderbook_enabled: false,
+            orderbook_url: None,
+            auction_poll_secs: 30,
+            max_orders: 512,
+        }
+    }
+}
+
 /// Oracle-update front-runner tuning.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OracleConfig {
@@ -536,6 +734,8 @@ pub struct Config {
     /// Alerting tunables.
     pub alerts: AlertsConfig,
     pub api: ApiConfig,
+    /// Live CoW Protocol Order Book feed (read-only).
+    pub cow: CowConfig,
     /// Whether the V2 pool-discovery scan runs each block.
     pub pool_discovery: bool,
     /// Whether the UniswapV3 `PoolCreated` scan runs each block. On with
@@ -1058,22 +1258,30 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let chain_id = env_u64("CHAIN_ID", 1);
         // Keep the legacy `ETH_*` names for one-process deployments while
-        // allowing an operator to keep Ethereum and Base bindings in the same
+        // allowing an operator to keep multiple chain bindings in the same
         // environment. The selected chain always wins; a missing selected
         // binding is a hard startup error rather than silently using the other
         // chain's RPC (which would contaminate state and qualification data).
-        let (http_url, ws_url) = if chain_id == 8453 {
-            (
+        let (http_url, ws_url) = match chain_id {
+            8453 => (
                 env_opt("BASE_HTTP_URL").or_else(|| env_opt("ETH_HTTP_URL")),
                 env_opt("BASE_WS_URL").or_else(|| env_opt("ETH_WS_URL")),
-            )
-        } else {
-            (env_opt("ETH_HTTP_URL"), env_opt("ETH_WS_URL"))
+            ),
+            42161 => (
+                env_opt("ARB_HTTP_URL").or_else(|| env_opt("ETH_HTTP_URL")),
+                env_opt("ARB_WS_URL").or_else(|| env_opt("ETH_WS_URL")),
+            ),
+            59144 => (
+                env_opt("LINEA_HTTP_URL").or_else(|| env_opt("ETH_HTTP_URL")),
+                env_opt("LINEA_WS_URL").or_else(|| env_opt("ETH_WS_URL")),
+            ),
+            _ => (env_opt("ETH_HTTP_URL"), env_opt("ETH_WS_URL")),
         };
-        let http_url = http_url.context(if chain_id == 8453 {
-            "BASE_HTTP_URL is required for chain 8453 (an archive-capable RPC endpoint)"
-        } else {
-            "ETH_HTTP_URL is required (an archive-capable RPC endpoint)"
+        let http_url = http_url.context(match chain_id {
+            8453 => "BASE_HTTP_URL is required for chain 8453 (an archive-capable RPC endpoint)",
+            42161 => "ARB_HTTP_URL is required for chain 42161 (an archive-capable RPC endpoint)",
+            59144 => "LINEA_HTTP_URL is required for chain 59144 (an archive-capable RPC endpoint)",
+            _ => "ETH_HTTP_URL is required (an archive-capable RPC endpoint)",
         })?;
 
         // ── Chain address registry: built-in profile + env overrides ──
@@ -1253,11 +1461,15 @@ impl Config {
                 searcher_address,
             },
             risk: RiskConfig {
-                // Liberal defaults: record anything at all that is net positive.
+                // Small-bankroll defaults (a $50–100 seed). One in-worst-case
+                // position is capped at 0.05 ETH and the drawdown kill switch
+                // is ARMED at a 0.05 ETH total loss, so a bad afternoon
+                // cannot eat the seed. Raise MAX_POSITION_WEI /
+                // MAX_DRAWDOWN_WEI only as P&L justifies it.
                 min_net_profit_wei: env_u256("MIN_NET_PROFIT_WEI", 1),
-                max_position_wei: env_u256("MAX_POSITION_WEI", 100_000_000_000_000_000_000), // 100 ETH
-                max_base_fee_wei: env_u256("MAX_BASE_FEE_WEI", 500_000_000_000),             // 500 gwei
-                bribe_bps: env_u64("BRIBE_BPS", 9_000) as u16,
+                max_position_wei: env_u256("MAX_POSITION_WEI", 50_000_000_000_000_000), // 0.05 ETH
+                max_base_fee_wei: env_u256("MAX_BASE_FEE_WEI", 500_000_000_000),          // 500 gwei
+                bribe_bps: env_u64("BRIBE_BPS", 900) as u16,
                 // Clamped into the same range the runtime patch validator
                 // enforces — an out-of-range env value would otherwise be
                 // echoed back by GET /api/risk and poison every dashboard
@@ -1274,7 +1486,7 @@ impl Config {
                     }
                     clamped
                 },
-                max_drawdown_wei: env_u256("MAX_DRAWDOWN_WEI", 0),
+                max_drawdown_wei: env_u256("MAX_DRAWDOWN_WEI", 50_000_000_000_000_000), // 0.05 ETH
                 max_inflight_per_strategy: env_u64("MAX_INFLIGHT_PER_STRATEGY", 32) as usize,
                 max_revert_rate: env_f64("MAX_REVERT_RATE", 1.0),
             },
@@ -1361,6 +1573,16 @@ impl Config {
                 auth_token: env_opt("API_AUTH_TOKEN").filter(|t| !t.is_empty()),
                 allowed_origins: env_list("API_ALLOWED_ORIGINS"),
             },
+            // Live CoW Order Book feed. Off by default: it is a new
+            // per-poll network dependency, and this bot's default posture is
+            // "no unrequested outbound calls" (the same rule that keeps the
+            // dashboard data real). Opt in with COW_ORDERBOOK_ENABLED=true.
+            cow: CowConfig {
+                orderbook_enabled: env_bool("COW_ORDERBOOK_ENABLED", false),
+                orderbook_url: env_opt("COW_ORDERBOOK_URL"),
+                auction_poll_secs: env_u64("COW_AUCTION_POLL_SECS", 30).max(5),
+                max_orders: (env_u64("COW_MAX_ORDERS", 512) as usize).max(1),
+            },
             // Infrastructure toggle (not a strategy): scan PairCreated each block.
             pool_discovery: env_bool("POOL_DISCOVERY", true),
             pool_discovery_v3: env_bool("POOL_DISCOVERY_V3", true),
@@ -1414,15 +1636,22 @@ impl Config {
             live_execution: env_bool("LIVE_EXECUTION", false)
                 && env_or("I_UNDERSTAND_LIVE_RISK", "no") == "yes",
             broadcast_enabled: env_bool("BROADCAST_ENABLED", false),
-            qualification_hours: env_u64("QUALIFICATION_HOURS", 168).max(1),
-            qualification_min_samples: env_u64("QUALIFICATION_MIN_SAMPLES", 30).max(1),
+            // ── Qualification gates ────────────────────────────────────────
+            // Default is EXPRESS MODE: QUALIFICATION_HOURS=0 removes the
+            // time + accumulated-evidence bank entirely (no soak, no shadow
+            // probation — the seeder's "the seed IS the soak" rule). The
+            // safety rails that do NOT go away in express mode: per-candidate
+            // anvil exact-payload fork simulation, the risk budget + drawdown
+            // kill switch, the on-chain profit-or-revert executor, and the
+            // one-website smoke. Set QUALIFICATION_HOURS>0 to restore the
+            // evidence soak for operators who want it.
+            qualification_hours: env_u64("QUALIFICATION_HOURS", 0),
+            qualification_min_samples: env_u64("QUALIFICATION_MIN_SAMPLES", 0),
             qualification_min_relay_comparisons: env_u64(
                 "QUALIFICATION_MIN_RELAY_COMPARISONS",
-                30,
-            )
-            .max(1),
-            qualification_min_actual_matches: env_u64("QUALIFICATION_MIN_ACTUAL_MATCHES", 30)
-                .max(1),
+                0,
+            ),
+            qualification_min_actual_matches: env_u64("QUALIFICATION_MIN_ACTUAL_MATCHES", 0),
             qualification_max_error_bps: env_u64("QUALIFICATION_MAX_ERROR_BPS", 2_000)
                 .clamp(1, 10_000),
             qualification_min_accuracy_bps: env_u64("QUALIFICATION_MIN_ACCURACY_BPS", 8_000)
@@ -1878,12 +2107,33 @@ mod tests {
     #[test]
     fn for_chain_selects_the_built_in_profiles() {
         assert_eq!(known::for_chain(1).unwrap().chain_id, 1);
+        assert_eq!(known::for_chain(42161).unwrap().chain_id, 42161);
         assert_eq!(known::for_chain(8453).unwrap().chain_id, 8453);
-        assert!(
-            known::for_chain(42161).is_none(),
-            "no Arbitrum profile in v1"
-        );
+        assert_eq!(known::for_chain(59144).unwrap().chain_id, 59144);
+        assert!(known::for_chain(10).is_none());
         assert!(known::for_chain(0).is_none());
+    }
+
+    #[test]
+    fn arb_profile_carries_the_verified_addresses() {
+        let a = known::arb();
+        assert_eq!(a.weth, known::ARB_WETH);
+        assert_eq!(a.usdc, known::ARB_USDC);
+        assert_eq!(a.aave_v3_pool, Some(known::ARB_AAVE_V3_POOL));
+        assert_eq!(a.balancer_vault, Some(known::ARB_BALANCER_VAULT));
+        assert_eq!(a.compound_v3_usdc, Some(known::ARB_COMPOUND_V3_USDC));
+        assert_eq!(a.morpho_blue, Some(known::ARB_MORPHO_BLUE));
+    }
+
+    #[test]
+    fn linea_profile_carries_the_verified_addresses() {
+        let l = known::linea();
+        assert_eq!(l.weth, known::LINEA_WETH);
+        assert_eq!(l.usdc, known::LINEA_USDC);
+        assert_eq!(l.aave_v3_pool, Some(known::LINEA_ZEROLEND_POOL));
+        assert_eq!(l.aave_v3_oracle, Some(known::LINEA_ZEROLEND_ORACLE));
+        assert!(l.balancer_vault.is_none(), "no proven Balancer vault on Linea");
+        assert!(l.univ2_factory.is_none(), "Lynex is not Uniswap V2 compatible");
     }
 
     #[test]

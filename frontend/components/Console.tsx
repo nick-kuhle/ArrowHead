@@ -78,6 +78,10 @@ export default function Console() {
   // keyed remount below so no panel can show another chain's data.
   const [chainSlug, setChainSlug] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
+  // True once the bot has answered 503 for a whole poll round. The proxy is
+  // honest now (it fabricates nothing), so a null `status` the UI can use
+  // falls out as an explicit "bot offline" banner instead of empty dashes.
+  const [botDown, setBotDown] = useState(false);
   const [pnl, setPnl] = useState<PnlResponse | null>(null);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [sims, setSims] = useState<SimulationRow[]>([]);
@@ -97,13 +101,17 @@ export default function Console() {
     const get = async <T,>(p: string, fallback: T): Promise<T> => {
       try {
         const r = await fetch(withChain(`/api/bot/${p}`, chainSlug), {cache: "no-store"});
+        // The proxy answers 503 (never invented data) when the bot is down;
+        // anything that is not 2xx is an offline marker for this endpoint.
+        if (!r.ok) return fallback;
         return (await r.json()) as T;
       } catch {
         return fallback;
       }
     };
+    const statusPromise = get<StatusResponse | null>("status", null);
     const [s, p, se, si, op, rb, comp, actual, executionRows, rg] = await Promise.all([
-      get<StatusResponse | null>("status", null),
+      statusPromise,
       get<PnlResponse | null>("pnl", null),
       get<SeriesPoint[]>("pnl/series?limit=250", []),
       get<SimulationRow[]>("simulations?limit=120", []),
@@ -114,6 +122,7 @@ export default function Console() {
       get<ExecutionResponse | null>("executions?limit=25", null),
       get<ReorgRow[]>("reorgs?limit=15", []),
     ]);
+    setBotDown(s === null);
     // Identity-preserving updates.
     //
     // Every poll used to hand each `useState` a brand new array or object,
@@ -170,15 +179,16 @@ export default function Console() {
     chainId !== undefined &&
     SLUG_EXPECTED_CHAIN[chainSlug] !== chainId;
   // Work order 0.3: the data-plane verdict, shown verbatim in the header so
-  // a sick plane is visible without opening the panel.
-  const dataMode = status?.dataMode ?? (demo ? "demo" : undefined);
+  // a sick plane is visible without opening the panel. Rendered from
+  // `status.dataMode` directly; no separate variable needed now that the demo
+  // fixture that used to populate it is gone.
 
   // Tab title: prefix the active chain so a screenshot or a browser tab
-  // strip reads "Base · JerseyMikes …" (WS-H4). Runs client-side only.
+  // strip reads "Base · ArrowHead …" (WS-H4). Runs client-side only.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const name = status?.chain.name ?? (chainSlug ? chainSlug[0].toUpperCase() + chainSlug.slice(1) : "");
-    document.title = name ? `${name} · JerseyMikes console` : "JerseyMikes — MEV simulation console";
+    document.title = name ? `${name} · ArrowHead MEV terminal` : "ArrowHead — MEV terminal";
   }, [status?.chain.name, chainSlug]);
   const totalNet = pnl?.totalNetWei ?? "0";
   const filteredSims = useMemo(
@@ -203,36 +213,30 @@ export default function Console() {
     <main style={{padding: 12, display: "grid", gap: 12, maxWidth: 1800, margin: "0 auto"}}>
       {/* header */}
       <header className="panel" style={{display: "flex", alignItems: "center", gap: 16, padding: "10px 14px", flexWrap: "wrap"}}>
-        <div style={{fontSize: 15, letterSpacing: "0.06em"}}>
-          JERSEY<span style={{color: "#22d3ee"}}>MIKES</span>
-          <span className="muted" style={{marginLeft: 8, fontSize: 11}}>MEV simulation console</span>
+        <div style={{fontSize: 15}}>
+          <span className="brand">ARROWHEAD</span>
+          <span className="muted" style={{marginLeft: 8, fontSize: 11}}>MEV terminal</span>
         </div>
 
         <ChainSwitcher />
 
         <ModeSwitch mode={status?.mode} armed={status?.liveArmed} demo={demo} onChanged={load} />
 
-        {demo && (
-          <span className="badge" style={{color: "#f5b544"}} title="bot API unreachable — showing generated data">
-            DEMO DATA
-          </span>
-        )}
-
-        {!demo && dataMode && (
+        {!botDown && status && status.dataMode && (
           <span
             className="badge"
             style={{
               color:
-                dataMode === "live_preconfirmation"
+                status.dataMode === "live_preconfirmation"
                   ? "#35d07f"
-                  : dataMode === "live_canonical_only"
+                  : status.dataMode === "live_canonical_only"
                     ? "#22d3ee"
                     : "#f5b544",
             }}
             title={
-              dataMode === "live_preconfirmation"
+              status.dataMode === "live_preconfirmation"
                 ? "canonical head fresh + preconfirmation feed live"
-                : dataMode === "live_canonical_only"
+                : status.dataMode === "live_canonical_only"
                   ? "canonical head fresh; no preconfirmation frames (normal outside Base)"
                   : "canonical head is stale — nothing on this console is live"
             }
@@ -241,23 +245,37 @@ export default function Console() {
               className="dot"
               style={{
                 background:
-                  dataMode === "live_preconfirmation"
+                  status.dataMode === "live_preconfirmation"
                     ? "#35d07f"
-                    : dataMode === "live_canonical_only"
+                    : status.dataMode === "live_canonical_only"
                       ? "#22d3ee"
                       : "#f5b544",
               }}
             />
-            {dataMode === "live_preconfirmation"
+            {status.dataMode === "live_preconfirmation"
               ? "preconf live"
-              : dataMode === "live_canonical_only"
+              : status.dataMode === "live_canonical_only"
                 ? "canonical only"
                 : "data degraded"}
           </span>
         )}
 
-        <span className={connected ? "badge live" : "badge"} style={{color: connected ? "#35d07f" : "#6b7c93"}}>
-          <span className="dot" style={{background: connected ? "#35d07f" : "#6b7c93"}} /> feed
+        {botDown && (
+          <span
+            className="badge"
+            style={{color: "#ff5c5c"}}
+            title="the bot answered HTTP 503 — this console shows nothing invented"
+          >
+            bot offline
+          </span>
+        )}
+
+        <span
+          className={connected ? "badge live" : "badge"}
+          style={{color: connected && !botDown ? "#35d07f" : "#6b7c93"}}
+          title={botDown && !connected ? "bot unreachable — no live feed" : connected ? "live feed subscribed" : "feed disconnected"}
+        >
+          <span className={`dot ${connected && !botDown ? "dot-live" : ""}`} style={{background: connected && !botDown ? "#35d07f" : "#6b7c93"}} /> feed
         </span>
 
         <WalletButton expectedChainId={chainId} />
@@ -319,6 +337,28 @@ export default function Console() {
           <strong>{labelFor(SLUG_EXPECTED_CHAIN[chainSlug!])}</strong>, but that bot URL answered for{" "}
           <strong>{status?.chain.name ?? labelFor(chainId)}</strong> (chain id {chainId}). The CHAINS
           env entry is pointed at the wrong bot — fix the registry, not the bot.
+        </div>
+      )}
+
+      {/* bot is down: the proxy fabricates nothing, so every read answered
+          503 and every panel below stays empty on purpose. Say so up front. */}
+      {botDown && (
+        <div
+          role="status"
+          style={{
+            border: "1px solid var(--red)",
+            background: "rgba(255, 92, 92, 0.07)",
+            color: "var(--red)",
+            padding: "6px 10px",
+            borderRadius: 4,
+            fontSize: 11,
+            marginBottom: 8,
+          }}
+        >
+          the <strong>{chainSlug ?? "default"}</strong> bot is offline — every panel below is empty
+          because nothing is being invented to fill it. Start the bot for this chain (and check the{" "}
+          <code>BOT_API_URL</code> / <code>CHAINS</code> env), and the console will come alive on its
+          own. No transaction can be sent while the bot is down.
         </div>
       )}
 

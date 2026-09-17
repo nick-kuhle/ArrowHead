@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     const text = await upstream.text();
     return new Response(text, {
       status: upstream.status,
-      headers: {"content-type": "application/json", "x-rpc-upstream": "jerseymikes"},
+      headers: {"content-type": "application/json", "x-rpc-upstream": "arrowhead"},
     });
   } catch (e) {
     return err(`rpc proxy failed: ${(e as Error).message.split("\n")[0]}`, 502);

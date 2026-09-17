@@ -146,7 +146,7 @@ const FeedRow = memo(function FeedRow({
   measureRef: (el: HTMLElement | null) => void;
 }) {
   return (
-    <tr ref={measureRef} data-index={index}>
+    <tr ref={measureRef} data-index={index} className="table-row-anim">
       <td className="muted">{clock(eventTime(event))}</td>
       <td>
         <span className="badge" style={{color: kindColor(event)}}>

@@ -78,12 +78,24 @@ contract MevExecutor is IFlashLoanRecipient {
     bytes32 private constant _V3_CALLBACK_SLOT =
         0x2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a;
 
+    /// @notice Base (frame) for per-token transient audit slots. Actual slot =
+    ///         `keccak256(abi.encode(_AUDIT_SLOT, token))`.
+    bytes32 private constant _AUDIT_SLOT =
+        0x3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091abc;
+
     address public immutable BALANCER_VAULT;
     address public immutable WETH;
 
     address public owner;
     mapping(address => bool) public searchers;
     mapping(bytes32 => Baseline) private _baselines;
+    /// @notice Tokens the owner has asked the executor to never deplete as a
+    ///         side effect of a batch. Balances are snapshotted at the start of
+    ///         every settlement and verified unchanged (profit token exempt) at
+    ///         the end — a compromised searcher key is therefore bounded even
+    ///         if the profit-or-revert guard were somehow bypassed.
+    mapping(address => bool) public auditedTokens;
+    address[] public auditedList;
 
     event PhaseOpened(bytes32 indexed tag, address indexed profitToken, uint256 referenceBalance);
     event ExpiredBaselineCleared(bytes32 indexed tag, uint64 openedAtBlock);
@@ -98,10 +110,15 @@ contract MevExecutor is IFlashLoanRecipient {
     event SearcherSet(address indexed searcher, bool allowed);
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
     event Swept(address indexed token, address indexed to, uint256 amount);
+    event TokenAudited(address indexed token, bool audited);
 
     error NotOwner();
     error NotSearcher();
     error Reentrancy();
+    /// @notice An owner marked a zero token as audited.
+    error ZeroAddress();
+    /// @notice A whitelisted (audited) non-profit token lost balance during a batch.
+    error AssetLeak(address token, uint256 delta);
     error Deadline();
     error BaseFeeTooHigh();
     error Unprofitable(uint256 realised, uint256 required);
@@ -180,8 +197,38 @@ contract MevExecutor is IFlashLoanRecipient {
     }
 
     function setOwner(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
         emit OwnerChanged(owner, newOwner);
         owner = newOwner;
+    }
+
+    /// @notice Mark a token as audited (true) or release it (false).
+    /// @dev Audited tokens' balances are snapshotted at the start of every
+    ///      settlement and must not have decreased by its end (the profit token
+    ///      is exempt — it is checked by the retained-profit guard). One
+    ///      mistake here (e.g. auditing a token the bot intentionally spends in
+    ///      a strategy) reverts those batches: release the token, don't widen
+    ///      the profit token. Usually only WETH needs auditing.
+    function setTokenAudit(address token, bool status) external onlyOwner {
+        if (token == address(0)) revert ZeroAddress();
+        if (auditedTokens[token] == status) return;
+        auditedTokens[token] = status;
+        if (status) {
+            auditedList.push(token);
+        } else {
+            uint256 n = auditedList.length;
+            for (uint256 i; i < n;) {
+                if (auditedList[i] == token) {
+                    auditedList[i] = auditedList[n - 1];
+                    auditedList.pop();
+                    break;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+        }
+        emit TokenAudited(token, status);
     }
 
     /// @notice Withdraw funds. Only the owner, only to the owner-specified address.
@@ -254,8 +301,10 @@ contract MevExecutor is IFlashLoanRecipient {
             balBefore = _balance(g.profitToken);
         }
 
+        _auditBegin(g.profitToken);
         _run(calls);
         profit = _settle(tag, g, balBefore, gasStart);
+        _auditCheck(g.profitToken);
     }
 
     /// @notice Same as `execute` but funded by a Balancer V2 flash loan (zero fee).
@@ -271,7 +320,9 @@ contract MevExecutor is IFlashLoanRecipient {
         // A flash loan cannot span two transactions. Flash-funded strategies
         // are therefore always single-transaction settlements.
         if (g.phase != 0) revert BadPhase();
+        _auditBegin(g.profitToken);
         _flash(tokens, amounts, _encodeFlashData(tag, calls, g));
+        _auditCheck(g.profitToken);
     }
 
     function _flash(address[] calldata tokens, uint256[] calldata amounts, bytes memory data) private {
@@ -310,6 +361,7 @@ contract MevExecutor is IFlashLoanRecipient {
         (bytes32 tag, Call[] memory calls, Guard memory g, uint256 balBefore, uint256 gasStart) =
             abi.decode(userData, (bytes32, Call[], Guard, uint256, uint256));
 
+        _auditBegin(g.profitToken);
         _runMemory(calls);
 
         // Repay the vault.
@@ -322,6 +374,7 @@ contract MevExecutor is IFlashLoanRecipient {
         }
 
         _settle(tag, g, balBefore, gasStart);
+        _auditCheck(g.profitToken);
     }
 
     // ---------------------------------------------------------------------
@@ -425,11 +478,13 @@ contract MevExecutor is IFlashLoanRecipient {
     {
         uint256 gasStart = gasleft();
         uint256 before = _balance(profitToken);
+        _auditBegin(profitToken);
         _run(calls);
         // Balances are bounded by total supply, so neither cast can overflow
         // int256 for any real token.
         delta = int256(_balance(profitToken)) - int256(before);
         gasUsed = gasStart - gasleft();
+        _auditCheck(profitToken);
     }
 
     // ---------------------------------------------------------------------
@@ -500,6 +555,54 @@ contract MevExecutor is IFlashLoanRecipient {
     function _balance(address token) private view returns (uint256) {
         if (token == address(0)) return address(this).balance;
         return IERC20(token).balanceOf(address(this));
+    }
+
+    function _auditSlot(address token) private pure returns (bytes32) {
+        return keccak256(abi.encode(_AUDIT_SLOT, token));
+    }
+
+    /// @notice Snapshot the balances of every audited token we currently hold
+    ///         (the profit token is exempt) into transient storage.
+    function _auditBegin(address profitToken) private {
+        address[] storage list = auditedList;
+        uint256 n = list.length;
+        for (uint256 i; i < n;) {
+            address token = list[i];
+            unchecked {
+                ++i;
+            }
+            if (token == profitToken || token == address(0)) continue;
+            uint256 bal = _balance(token);
+            if (bal == 0) continue;
+            bytes32 slot = _auditSlot(token);
+            assembly ("memory-safe") {
+                tstore(slot, bal)
+            }
+        }
+    }
+
+    /// @notice Verify no audited, non-profit token lost balance since
+    ///         `_auditBegin`. Intentionally `view`: it follows the transaction's
+    ///         own transient storage, so state is irrelevant.
+    function _auditCheck(address profitToken) private view {
+        address[] storage list = auditedList;
+        uint256 n = list.length;
+        for (uint256 i; i < n;) {
+            address token = list[i];
+            unchecked {
+                ++i;
+            }
+            if (token == profitToken || token == address(0)) continue;
+            bytes32 slot = _auditSlot(token);
+            uint256 before;
+            assembly ("memory-safe") {
+                before := tload(slot)
+            }
+            if (before != 0) {
+                uint256 current = _balance(token);
+                if (current < before) revert AssetLeak(token, before - current);
+            }
+        }
     }
 
     function _safeTransfer(address token, address to, uint256 amount) private {

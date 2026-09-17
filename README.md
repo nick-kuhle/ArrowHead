@@ -26,11 +26,11 @@ firm budget, and we fine-tune from real results.
 ## The idea in one paragraph
 
 Big MEV bots fight over the same few fat trades on Ethereum and Base. ArrowHead
-ignores those fights. It watches smaller chains — **Linea first** — where a
-$100 trade is still worth someone's while, where a solo operator can catch
-liquidations the giants skip, and where gas costs fractions of a cent so trying
-and being wrong is nearly free. Same DNA as a Formula 1 team, driving a go-kart
-in a league nobody entered yet.
+ignores those fights. It watches the low-competition corners of several chains —
+**Linea first**, then Base — where a $100 trade is still worth someone's while,
+where a solo operator can catch liquidations the giants skip, and where gas
+costs fractions of a cent so trying and being wrong is nearly free. Same DNA as
+a Formula 1 team, driving a go-kart in a league nobody entered yet.
 
 ## What it is NOT
 
@@ -48,8 +48,10 @@ in a league nobody entered yet.
 
 | Chain | Status | Venues |
 |---|---|---|
-| **Linea (59144)** | Primary — being wired | Lynex (Solidly), Etherex (concentrated), Mendi (Compound-V2 lending), ZeroLend (Aave-V3 lending) |
-| **Base (8453)** | Second — profile inherited | Aerodrome, Uniswap V3, Aave V3, Morpho Blue, Compound V3 |
+| **Linea (59144)** | Profile wired in code — venue adapters pending | Lynex (Solidly) — not yet adapted · Etherex (concentrated custom tiers) · Mendi (Compound-V2) — not yet adapted · ZeroLend (Aave-V3 lending) |
+| **Base (8453)** | Profile wired | Aerodrome, Uniswap V3, Aave V3, Morpho Blue, Compound V3 |
+| **Ethereum (1)** | Profile wired | Uniswap V2/V3, Balancer, Aave V3, Compound V3, Maker |
+| **Arbitrum (42161)** | Profile wired | Uniswap V2/V3, Balancer, Aave V3, Compound V3, Morpho Blue |
 
 The same binary runs per chain; each chain gets its own env file, its own
 wallet, its own budget. Run one chain or ten — nothing changes but a folder.
@@ -61,10 +63,16 @@ wallet, its own budget. Run one chain or ten — nothing changes but a folder.
 1. **Profit-or-revert.** The on-chain executor measures the bookkeeping and
    reverts the *entire* transaction if profit is zero or negative. A losing
    trade doesn't get mined.
-2. **Firm budgets.** The distributed budget caps are on-chain and the trading
-   key cannot raise them. Compromise is bounded.
-3. **One-we i smoke.** First live send per chain is a provably-tiny
-   transaction to verify signing→relay→executor; then we disarm and review.
+2. **Firm bot-side budget.** The per-chain trading budget (max position, max
+   cumulative drawdown, kill switch) lives in the bot's risk engine and is
+   checked before every send. It is *not* an on-chain cap: a compromised
+   trading key can only ever profit-or-revert through the executor, but a
+   compromised *bot* could raise its own budget. Inspect the engine's risk
+   output before arming, and keep the owner key separate.
+3. **One-time smoke.** Optional bounded live probes (a provably-tiny
+   transaction each) verify signing→relay→executor end to end; then disarm
+   and review. The seed IS the soak — live trading is not gated on a shadow
+   window by default (express mode), so smoke is a habit, not a requirement.
 4. **Kill switch.** One authenticated button (or one env line) stops live
    trading instantly; open positions are still managed to safety.
 5. **Two keys, always separate.** Deploy/owner key never touches the trading

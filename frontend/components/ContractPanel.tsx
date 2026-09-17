@@ -45,6 +45,7 @@ export default function ContractPanel({
   const [owner, setOwner] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [isSearcher, setIsSearcher] = useState<boolean | null>(null);
+  const [notDeployed, setNotDeployed] = useState(false);
   const [searcherInput, setSearcherInput] = useState("");
   const [sweepAmount, setSweepAmount] = useState("0");
   const [status, setStatus] = useState<string>("");
@@ -91,6 +92,7 @@ export default function ContractPanel({
         setStatus("not a valid address");
         return;
       }
+      setNotDeployed(false);
       const key = `${t.toLowerCase()}:${who?.toLowerCase() ?? "-"}`;
 
       if (!force) {
@@ -112,6 +114,19 @@ export default function ContractPanel({
       const run = (async () => {
         try {
           const client = publicClient;
+          // Prove the address has code before reading anything. Reads against
+          // an EOA or an empty account would fail with a confusing abi decode
+          // error; the operator-facing truth is "MevExecutor is not deployed
+          // on this chain yet".
+          const code = await client.getCode({address: t as Address});
+          if (!code || code === "0x") {
+            setNotDeployed(true);
+            setOwner(null);
+            setBalance(null);
+            setIsSearcher(null);
+            setStatus("no code at this address — MevExecutor is not deployed on this chain");
+            return;
+          }
           const [o, b] = await Promise.all([
             client.readContract({address: t as Address, abi: EXECUTOR_ABI, functionName: "owner"}),
             client.getBalance({address: t as Address}),
@@ -172,6 +187,10 @@ export default function ContractPanel({
     async (functionName: string, args: unknown[]) => {
       if (!address) {
         setStatus("connect a wallet first");
+        return;
+      }
+      if (notDeployed) {
+        setStatus("refusing to write: no code at the executor address — deploy MevExecutor first");
         return;
       }
       setBusy(true);
@@ -308,7 +327,15 @@ export default function ContractPanel({
             )
           }
         />
-        <Field label="eth balance" value={balance ? `${Number(balance).toFixed(4)} ETH` : "—"} />
+        <Field
+          label="eth balance"
+          value={balance ? `${Number(balance).toFixed(4)} ETH` : "—"}
+        />
+        <Field
+          label="deployment"
+          value={notDeployed ? "NOT DEPLOYED" : owner ? "live" : "—"}
+          tone={notDeployed ? "neg" : owner ? "pos" : undefined}
+        />
         <Field
           label="you are searcher"
           value={isSearcher === null ? "—" : isSearcher ? "yes" : "no"}
@@ -337,14 +364,14 @@ export default function ContractPanel({
           style={{...inputStyle, minWidth: 320}}
         />
         <button
-          disabled={busy || !isAddress(searcherInput)}
+          disabled={busy || !isAddress(searcherInput) || notDeployed}
           onClick={() => void write("setSearcher", [searcherInput, true])}
           style={btnStyle}
         >
           allow searcher
         </button>
         <button
-          disabled={busy || !isAddress(searcherInput)}
+          disabled={busy || !isAddress(searcherInput) || notDeployed}
           onClick={() => void write("setSearcher", [searcherInput, false])}
           style={btnStyle}
         >
@@ -361,7 +388,7 @@ export default function ContractPanel({
           style={{...inputStyle, minWidth: 140, width: 140}}
         />
         <button
-          disabled={busy || !address || !isAddress(target) || !/^\d*\.?\d*$/.test(sweepAmount) || sweepAmount === ""}
+          disabled={busy || !address || !isAddress(target) || notDeployed || !/^\d*\.?\d*$/.test(sweepAmount) || sweepAmount === ""}
           onClick={() =>
             void write("sweep", [
               "0x0000000000000000000000000000000000000000",

@@ -499,5 +499,100 @@ contract MevExecutorTest is Test {
         assertFalse(ok, "unknown selectors must revert (no fallback)");
     }
 
+    // -----------------------------------------------------------------
+    // Owner / inventory hardening (post-audit)
+    // -----------------------------------------------------------------
+
+    function test_setOwnerRejectsZeroAddress() public {
+        vm.expectRevert(MevExecutor.ZeroAddress.selector);
+        exec.setOwner(address(0));
+        assertEq(exec.owner(), address(this), "owner unchanged after rejected transfer");
+    }
+
+    function test_setOwnerTransfersOwnership() public {
+        exec.setOwner(searcher);
+        assertEq(exec.owner(), searcher);
+    }
+
+    function test_setTokenAuditRejectsZeroAddress() public {
+        vm.expectRevert(MevExecutor.ZeroAddress.selector);
+        exec.setTokenAudit(address(0), true);
+    }
+
+    /// A compromised searcher key tries to move a pre-funded, audited token out
+    /// of the executor (here: USDC). The profit-token delta is zero and would
+    /// otherwise pass with minProfit == 0; the inventory audit must revert it.
+    function test_auditedTokenCannotBeDrained() public {
+        usdc.mint(address(exec), 1_000e6);
+        exec.setTokenAudit(address(usdc), true);
+
+        MevExecutor.Call[] memory calls = new MevExecutor.Call[](1);
+        calls[0] = MevExecutor.Call({
+            target: address(usdc),
+            value: 0,
+            data: abi.encodeWithSignature("transfer(address,uint256)", stranger, 1_000e6)
+        });
+
+        vm.prank(searcher);
+        vm.expectRevert(abi.encodeWithSelector(MevExecutor.AssetLeak.selector, address(usdc), 1_000e6));
+        exec.execute(bytes32("drain"), calls, _guard(address(0), 0));
+    }
+
+    /// The same batch is accepted when the token is not audited — proving the
+    /// guard is the thing doing the blocking, not some other check.
+    function test_unauditedTokenTransferIsAllowed() public {
+        usdc.mint(address(exec), 1_000e6);
+
+        MevExecutor.Call[] memory calls = new MevExecutor.Call[](1);
+        calls[0] = MevExecutor.Call({
+            target: address(usdc),
+            value: 0,
+            data: abi.encodeWithSignature("transfer(address,uint256)", stranger, 1_000e6)
+        });
+
+        vm.prank(searcher);
+        exec.execute(bytes32("ok"), calls, _guard(address(0), 0));
+
+        assertEq(usdc.balanceOf(stranger), 1_000e6);
+    }
+
+    /// Auditing a token the batch legitimately spends reverts the batch — the
+    /// documented foot-gun. Releasing the audit restores the batch.
+    function test_releasingAuditAllowsTheSameBatch() public {
+        usdc.mint(address(exec), 1_000e6);
+        exec.setTokenAudit(address(usdc), true);
+        exec.setTokenAudit(address(usdc), false);
+
+        MevExecutor.Call[] memory calls = new MevExecutor.Call[](1);
+        calls[0] = MevExecutor.Call({
+            target: address(usdc),
+            value: 0,
+            data: abi.encodeWithSignature("transfer(address,uint256)", stranger, 1_000e6)
+        });
+
+        vm.prank(searcher);
+        exec.execute(bytes32("ok2"), calls, _guard(address(0), 0));
+        assertEq(usdc.balanceOf(stranger), 1_000e6);
+    }
+
+    /// A profitable batch that only grows an audited token is fine (profit
+    /// token exempt / balances only ever increase).
+    function test_auditedTokenIncreaseIsAllowed() public {
+        usdc.mint(address(this), 100e6);
+        usdc.approve(address(exec), type(uint256).max);
+        exec.setTokenAudit(address(usdc), true);
+
+        MevExecutor.Call[] memory calls = new MevExecutor.Call[](1);
+        calls[0] = MevExecutor.Call({
+            target: address(usdc),
+            value: 0,
+            data: abi.encodeWithSignature("transferFrom(address,address,uint256)", address(this), address(exec), 100e6)
+        });
+
+        vm.prank(searcher);
+        exec.execute(bytes32("grow"), calls, _guard(address(0), 0));
+        assertEq(usdc.balanceOf(address(exec)), 100e6);
+    }
+
     receive() external payable {}
 }

@@ -36,6 +36,11 @@ pub struct CowAuctionOrder {
     pub remaining_sell_amount: U256,
     pub minimum_buy_amount: U256,
     pub partially_fillable: bool,
+    /// The 56-byte canonical CoW order uid (`digest || owner || validTo`) when
+    /// this order came from the live Order Book API. `None` for orders that
+    /// only passed through the offline intent path.
+    #[serde(default)]
+    pub canonical_uid: Option<String>,
 }
 
 /// A candidate produced by a route search. Route construction is intentionally
@@ -168,6 +173,7 @@ mod tests {
             remaining_sell_amount: U256::from(100u64),
             minimum_buy_amount: U256::from(90u64),
             partially_fillable: false,
+            canonical_uid: None,
         }
     }
 
